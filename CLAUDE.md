@@ -120,6 +120,7 @@ L:\ 는 `lit` 멀티레포 워크스페이스의 **얇은 루트 레포**이자,
 - `lbx-gfx/doc/plan.md`, `lbx-gfx/doc/ndc-convention.md`
 - `cal/cal-flood/doc/Cal_Module_Plugin_Design.md` (Cal 플러그인 구조의 source of truth)
 - `lbsvm-core/doc/` (차량 키네마틱 모델 등), `lbsvm-core/CLAUDE.md` (Shadow/Poly/Geo 리팩토링 지침)
+- 루트 `doc/architecture.md` (워크스페이스 구조·의존), `doc/project-log.md` (크로스 레포 진행 현황·다음 할 일).
 - 크로스-레포 문서는 루트 `doc/`에 추가한다.
 
 ## 실무 주의
