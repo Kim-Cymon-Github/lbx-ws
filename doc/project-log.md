@@ -10,13 +10,33 @@
   external image CPU import 텍스처, **depth buffer(GLES+VK)**, VK 테스트를 gfx 소유
   swapchain 으로 이전(ImGui 는 오버레이), GPU 선택 유틸(통합 GPU 우선),
   표준 stdio/stdlib 호출을 lbx-core 래퍼로 전환.
-- **다음**: Phase B(Mesh + PBR — PBR 셰이더, 텍스처 로딩 `gfx_texture_2d`,
-  pipeline 캐시, glTF/OBJ 로드), Phase C(external texture + textured-blit,
-  dma_buf GLES 구현).
+
+- **다음 (조명 로드맵)**: 1차 목표는 lbsvm-core 의 **차량 모델 렌더링 흡수**이고, 그건
+  풀 PBR 이 아니라 **Phong + 큐브맵 반사**다. PBR 로 가는 길의 앞부분을 미리 까는
+  셈이라 버리는 작업이 없다. 단계로 끊는다:
+  1. **공통 조명 토대** (Phong/PBR 공유) — 조명/카메라 setter 실제 구현
+     (`gfx_set_directional_light` / `gfx_set_camera_position` 은 현재 빈 껍데기),
+     VK uniform 버퍼 경로(push constant 80바이트 한계 초과분 수용),
+     다중 텍스처 바인딩 + NULL 슬롯용 1x1 기본 텍스처.
+  2. **Phong 머티리얼 + cube 텍스처/반사** = 차량 모델 흡수. material kind 에 PHONG
+     추가, `GFX_TEXTURE_CUBE` + `samplerCube` + `reflect(I,N)`. cube 토대는 이후 IBL 이
+     재사용한다.
+  3. **PBR** (metallic-roughness, Cook-Torrance) — 1 의 조명 토대 재사용. pipeline
+     캐시(alphaMode/doubleSided 변형)와 선형/sRGB 색 파이프라인이 함께 와야 한다.
+  4. **(나중) IBL** (환경광) — 2 의 cube 토대 재사용. 분량이 크게 늘어 후순위.
+  - 연계: plan.md Phase B(Mesh+PBR — 텍스처 로딩, pipeline 캐시, glTF/OBJ),
+    Phase C(external texture + textured-blit, dma_buf GLES).
+
+- **복잡도 메모**: PBR/Phong 셰이더 본체는 정형화돼 보통 수준이다. 진짜 일은 1단계
+  인프라(uniform 버퍼·다중 텍스처·조명 setter)와 pipeline 캐시·색 파이프라인이다.
+  IBL 만 분량이 크게 늘므로 후순위로 둔다. 1~2 단계만 해도 "조명 받는 + 반사되는
+  차량 큐브/메시"가 나오므로 거기서 끊을 수 있다.
+
 - **보류 / 숙제**: VK 멀티뷰포트와 swapchain 리사이즈(재생성), 진짜 프레임
   파이프라이닝(슬롯별 command buffer 로 직렬화 제거), `calloc` -> 전용 zeroing
   alloc 함수 도입, 동적 mesh 스트림(vec2 position, per-frame color stream) —
   동적 그림자 연동의 전제.
+
 - 설계: `lbx-gfx/doc/plan.md`, `lbx-gfx/doc/ndc-convention.md`.
 
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
@@ -24,7 +44,7 @@
 - **진행**: Shadow/Poly/Geo 리팩토링(이름 변경보다 의존 방향 정리·중복 제거 우선,
   mesh 경계 선정리). working 브랜치는 `feature/shadow-upgrade`.
 - **다음**: 동적 그림자 RADIAL_LOD 메시를 `GFX_MESH` 로 이주(위 lbx-gfx 동적 스트림
-  숙제와 맞물린다).
+  숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
 
 ## lbx-geo (진행)
