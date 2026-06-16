@@ -6,10 +6,25 @@
 
 ## lbx-gfx — graphics thin layer (활발)
 
-- **완료**: device/swapchain(GLES+VK), mesh upload + `gfx_draw_mesh`(unlit/blit),
+- **완료**: device/swapchain(GLES+VK), mesh + `gfx_draw_mesh`(unlit/blit),
   external image CPU import 텍스처, **depth buffer(GLES+VK)**, VK 테스트를 gfx 소유
   swapchain 으로 이전(ImGui 는 오버레이), GPU 선택 유틸(통합 GPU 우선),
-  표준 stdio/stdlib 호출을 lbx-core 래퍼로 전환.
+  표준 stdio/stdlib 호출을 lbx-core 래퍼로 전환, GFX_MESH 정점/인덱스 입력을
+  `gfx_mesh_set_vertices`/`gfx_mesh_set_indices` 로(CPU 포인터 멤버 폐기).
+
+- **최근 (2026-06-16)**:
+  - test_vk(`test/test_vk/main.cpp`)를 원본 ImGui Vulkan 예제 대비 정리 — 죽은 `#if 0`
+    블록(실은 1세대 실험 코드) 전부 제거, 변경점만 주석으로 남김.
+  - **GFX_MESH 설계 재검토**를 `lbx-gfx/doc/plan.md` §3.5 에 기록: (A) CPU 입력/GPU
+    자원/기하 설명 분리, (B) AoS·SoA 를 Vulkan binding 모델로 통합, (D) 멀티머티리얼=
+    서브메시 다중 draw(`mesh`=한 draw granularity 유지), (E) map 중심 입력 + BUFFER 풀
+    결합(`alloc_vertices(pool)`). 동적 그림자 SoA 워크드 예제 포함.
+  - 그중 **A 의 1차 실행**으로 GFX_MESH 에서 CPU 데이터 포인터 제거 → `set_vertices`/
+    `set_indices`(동기 복사) 도입, GLES/VK 양쪽 구현·빌드·실행 검증 완료.
+  - **내일 이어서**: plan.md §3.5 open 체크리스트에서 시작 — (B) binding 배열 struct,
+    (간극 1·3) vec2 position·vec4 f32 color attr, (E) `alloc_binding`/`map_attr` 동적
+    경로. 이게 갖춰지면 lbsvm-core 동적 그림자 이주로 연결. 배포용 `lib/lbx` 서브모듈의
+    헤더 복사본은 `set_*` 미반영 상태 — publish 동기화 별도 필요.
 
 - **다음 (조명 로드맵)**: 1차 목표는 lbsvm-core 의 **차량 모델 렌더링 흡수**이고, 그건
   풀 PBR 이 아니라 **Phong + 큐브맵 반사**다. PBR 로 가는 길의 앞부분을 미리 까는
