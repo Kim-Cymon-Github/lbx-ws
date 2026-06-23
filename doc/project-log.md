@@ -70,8 +70,30 @@
 
 - **다음 (완성도 PBR 로드맵)**: 차량 흡수엔 현 수준 충분(thin layer 목표 달성).
   "진짜 완성 PBR"로 가면 IBL 만으로는 부족하고 아래가 함께 필요:
-  - (a) **4단계 IBL** — 환경광 정식화: diffuse irradiance map + specular prefilter
-    mip(roughness 별) + BRDF LUT(split-sum). 현 env 반사 근사 대체. 가장 큰 한 걸음.
+  - (a) **4단계 IBL** — 환경광 정식화. 가장 큰 한 걸음. **내일 바로 시작 가이드**:
+    1. **자원**: Poly Haven `.hdr`(equirect, 2:1 파노라마, CC0 무료) → `test/assets/`.
+       stb 의 `stbi_loadf` 로 float 로드(stb 이미 보유). 1k~2k 면 충분.
+    2. **전처리(굽기)** = 3가지 맵 생성:
+       - equirect → 큐브맵 변환(또는 셰이더서 equirect 직접 샘플)
+       - diffuse **irradiance map**(환경 반구 적분, 작은 큐브 ~32) — 환경광 확산
+       - specular **prefilter mip**(roughness 별 블러, base ~128 + mip 체인) — 거친 반사
+       - **BRDF LUT**(2D ~512, (NdotV,roughness)→scale/bias, split-sum 적분)
+    3. **선결 인프라**(현재 없음):
+       - **큐브맵 mip 지원** — 현 `gfx_texture_cube_from_pixels` 는 mip 1. prefilter
+         체인엔 mip levels 필요.
+       - **HDR 포맷 RGBA16F** — 현 텍스처는 RGBA8. HDR 환경/irradiance/prefilter 는 float.
+       - **오프스크린 큐브맵 렌더(face별 render target) 또는 compute** — 굽기 경로.
+         (VK compute 는 plan 의 YOLO 용 compute 인프라와 공유 가능.)
+    4. **셰이더**: 현 `ambient`(flat) + env 근사(×(1-roughness))를
+       `ambient = irradiance(N)·albedo·ao + prefilter(R,rough)·(F0·lut.x + lut.y)` 로 교체.
+    - 참고 구현: Filament, learnopengl.com IBL(split-sum, Epic 2013).
+  - (a') **동적 환경맵 = 실시간 IBL — 야심 목표(2026-06-23 사용자 제기)**: 정적 prebake
+    대신 **런타임에 환경맵을 갱신**. lbsvm 도메인 핵심 = **차량 카메라 영상(dma_buf
+    zero-copy, plan §3.4 external image)을 실시간 환경 큐브맵으로** → 차량 크롬/유리에
+    실제 주변(카메라 피드)이 비치는 SVM 킬러 기능. (대안: 장면 6방향 렌더 reflection
+    probe.) **도전** = 매 프레임/주기 큐브맵 캡처 + **실시간 prefilter 재계산**(비쌈 —
+    compute + 저해상도 + 주기적 갱신으로 분산). 정적 IBL(a) 인프라(prefilter/LUT)를
+    그대로 쓰되 입력을 카메라로, 갱신을 런타임으로. plan Vulkan compute 와 직접 연관.
   - (b) **HDR 환경맵** — LDR `.lbi` → HDR(태양 등 1.0 초과 광)로 강렬한 반사.
   - (c) **그림자**(directional shadow map) — 입체감·접지감.
   - (d) **색 파이프라인 정합** — 현재 PBR 만 ACES/감마. Phong/blit/unlit 포함 전체
