@@ -15,7 +15,9 @@
   **조명 토대(Scene UBO[VK]/개별 uniform[GLES] + 방향광·ambient·카메라 setter,
   lit draw=N·L diffuse+ambient, Blinn-Phong specular), 큐브맵 환경 반사
   (`GFX_TEXTURE_CUBE`, `reflect`+metallic 혼합), albedo 텍스처 경로 양 백엔드 정합
-  (기본 흰색/노멀/큐브 텍스처), tangent-space 노멀맵(TBN)** — 양 백엔드 (build 210).
+  (기본 흰색/노멀/큐브 텍스처), tangent-space 노멀맵(TBN),
+  **Cook-Torrance PBR(metallic-roughness, D/F/G + tone map) — Phong 과 공존
+  (shading_model 런타임 선택)** — 양 백엔드 (build 210).
 
 - **최근 (2026-06-22)**: GFX_MESH 구조·백엔드 binding 모델 개편 완료(커밋 `3a78eb1`).
   plan.md §3.5 "결정 확정(2026-06-22)" 참조.
@@ -49,14 +51,14 @@
   metallic→반사강도 해석. 빌드+test 안정 실행 검증(시각 검증은 사용자 VS).
   **= lbsvm-core 차량 모델 흡수 분기점 도달.**
 
-- **다음**: 두 갈래 —
-  - (a) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달, 전략 아래). 착수 전
-    공개 헤더(device/texture/material.h) → lib/lbx deploy 사본 동기화 선행.
-  - (b) **3단계 PBR** (metallic-roughness Cook-Torrance). **현 Phong 셰이더를 대체하지
-    않고 별도 program 으로 공존**(2026-06-23 결정 — 저사양=Phong, 고사양=PBR). 현
-    "PBR" kind 는 내용이 Blinn-Phong+큐브맵이라 **PHONG 으로 정명**하고 진짜 PBR 을
-    신설. 머티리얼에 셰이딩 모델 선택(런타임) + 저사양은 PBR program 미컴파일 가능.
-    plan §3.3 의 "PBR 단일 통합"을 이 공존 모델로 수정함.
+- **다음** (3단계 PBR=Cook-Torrance/Phong 공존 완료, 커밋 `f1af98e`):
+  - (a) **glTF 로더(cgltf)** — 표준 에셋(DamagedHelmet 등)으로 PBR 정확성 골든 검증
+    + metal_rough/AO/emissive 텍스처를 descriptor 확장과 함께 셰이더에 연결(현재 PBR
+    은 metallic/roughness factor 만 사용, 텍스처 슬롯은 미연결).
+  - (b) **4단계 IBL** — roughness 의존 환경 반사(prefiltered 큐브맵 + BRDF LUT). 현
+    env 반사는 roughness 무시 근사(reflect+Fresnel)다.
+  - (c) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달). 착수 전 공개 헤더
+    (device/texture/material/program.h) → lib/lbx deploy 사본 동기화 선행.
 
 - **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
   아니라 **수직 슬라이스**로 이주. 분기 기준 = 경로별 API 안정성(PBR 완성 여부 아님).
