@@ -38,9 +38,17 @@
     인프라 도입 시. mesh 동적 경로(E의 `alloc_binding`/`map_attr`, VK multi-binding
     pipeline, DYNAMIC 링버퍼)는 동적 그림자 이주 직전(plan.md §3.5 `[~]`).
 
-- **다음 (조명 로드맵 2단계)**: Phong specular + 큐브맵 반사 = 차량 모델 흡수 채비.
-  material kind PHONG, `GFX_TEXTURE_CUBE` + `samplerCube` + `reflect(I,N)`. 1단계
-  Scene UBO/조명 토대 재사용. 2단계 완료가 lbsvm-core 차량 이주의 분기점(아래 전략).
+- **최근 (2026-06-23): 조명 2단계 완료 (specular `34e7bd2` + 큐브맵 `8c2f5f1`)**.
+  Blinn-Phong specular + 큐브맵 환경 반사(`reflect(-V,N)`, metallic 으로 lit↔반사
+  혼합) 양 백엔드. `GFX_TEXTURE_CUBE` 신설(VK 6-layer CUBE_COMPATIBLE / GLES
+  CUBE_MAP), `GFX_MATERIAL_PBR.env_cube`. **PHONG 별도 kind 대신 PBR 셰이더 발전으로
+  통합**(plan §3.3 "phong/matte/reflect/chrome → PBR 통합" 정합). roughness→shininess,
+  metallic→반사강도 해석. 빌드+test 안정 실행 검증(시각 검증은 사용자 VS).
+  **= lbsvm-core 차량 모델 흡수 분기점 도달.**
+
+- **다음**: 두 갈래 — (a) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달, 전략 아래),
+  (b) **3단계 PBR**(metallic-roughness Cook-Torrance) 본격화. 공개 헤더(device/texture/
+  material.h) 변경분의 lib/lbx deploy 사본 동기화는 차량 이주 착수 전 필요.
 
 - **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
   아니라 **수직 슬라이스**로 이주. 분기 기준 = 경로별 API 안정성(PBR 완성 여부 아님).
