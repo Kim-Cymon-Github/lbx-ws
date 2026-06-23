@@ -16,8 +16,10 @@
   lit draw=N·L diffuse+ambient, Blinn-Phong specular), 큐브맵 환경 반사
   (`GFX_TEXTURE_CUBE`, `reflect`+metallic 혼합), albedo 텍스처 경로 양 백엔드 정합
   (기본 흰색/노멀/큐브 텍스처), tangent-space 노멀맵(TBN),
-  **Cook-Torrance PBR(metallic-roughness, D/F/G + tone map) — Phong 과 공존
-  (shading_model 런타임 선택)** — 양 백엔드 (build 210).
+  **Cook-Torrance PBR(metallic-roughness, D/F/G) — Phong 과 공존(shading_model
+  런타임 선택)**, **glTF 로딩(cgltf): 메시 + 머티리얼 + 텍스처 풀(albedo/normal/
+  metal_rough/AO/emissive) + 실제 큐브맵(.lbi) 환경 반사 + ACES 톤매핑·sRGB 감마 +
+  env roughness 감쇠 근사** — 양 백엔드 (build 210).
 
 - **최근 (2026-06-22)**: GFX_MESH 구조·백엔드 binding 모델 개편 완료(커밋 `3a78eb1`).
   plan.md §3.5 "결정 확정(2026-06-22)" 참조.
@@ -51,13 +53,32 @@
   metallic→반사강도 해석. 빌드+test 안정 실행 검증(시각 검증은 사용자 VS).
   **= lbsvm-core 차량 모델 흡수 분기점 도달.**
 
-- **다음** (3단계 PBR=Cook-Torrance/Phong 공존 완료, 커밋 `f1af98e`):
-  - (a) **glTF 로더(cgltf)** — 표준 에셋(DamagedHelmet 등)으로 PBR 정확성 골든 검증
-    + metal_rough/AO/emissive 텍스처를 descriptor 확장과 함께 셰이더에 연결(현재 PBR
-    은 metallic/roughness factor 만 사용, 텍스처 슬롯은 미연결).
-  - (b) **4단계 IBL** — roughness 의존 환경 반사(prefiltered 큐브맵 + BRDF LUT). 현
-    env 반사는 roughness 무시 근사(reflect+Fresnel)다.
-  - (c) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달). 착수 전 공개 헤더
+- **최근 (2026-06-23): glTF PBR 로딩 완료 (커밋 `54270cc`/`b06a86f`/`d860a91`)**.
+  cgltf single-header 로더(test app 전용, 코어 밖). DamagedHelmet 으로 PBR 골든 검증.
+  - **메시**: cgltf accessor(pos/normal/tangent/uv/index) → `GFX_MESH` interleave.
+    노드 `cgltf_node_transform_world` → world matrix flatten(서브메시 리스트).
+  - **머티리얼**: pbr factor + albedo/normal/metal_rough/AO/emissive 텍스처
+    (glb 임베드 PNG/JPEG 를 `stb_image` 로 디코드, albedo/emissive=SRGB, 나머지 UNORM).
+    VK 는 텍스처 set4/5/6 추가(pipeline 7 set, 임베디드 묶기 TODO), GLES 는 unit3/4/5.
+  - **환경 반사**: lbsvm `.lbi` 6면 큐브맵을 `new_file_stream`+`LBX_IMAGE_LoadFromStream`
+    으로 로드 → gfx 큐브맵. 금속이 실제 환경 반사.
+  - **색**: ACES filmic 톤매핑 + linear→sRGB 감마(파스텔톤 해소), env 반사
+    roughness 감쇠 근사(거친 호스 가짜 광택 제거).
+  - **버그픽스(VK)**: PBR 셰이더 mediump→highp — half 에서 D(GGX) a2 언더플로 NaN
+    (하이라이트 검정). 임베디드도 PBR 은 highp 필요.
+  - → **차량 모델 흡수에 충분한 PBR 수준 도달.**
+
+- **다음 (완성도 PBR 로드맵)**: 차량 흡수엔 현 수준 충분(thin layer 목표 달성).
+  "진짜 완성 PBR"로 가면 IBL 만으로는 부족하고 아래가 함께 필요:
+  - (a) **4단계 IBL** — 환경광 정식화: diffuse irradiance map + specular prefilter
+    mip(roughness 별) + BRDF LUT(split-sum). 현 env 반사 근사 대체. 가장 큰 한 걸음.
+  - (b) **HDR 환경맵** — LDR `.lbi` → HDR(태양 등 1.0 초과 광)로 강렬한 반사.
+  - (c) **그림자**(directional shadow map) — 입체감·접지감.
+  - (d) **색 파이프라인 정합** — 현재 PBR 만 ACES/감마. Phong/blit/unlit 포함 전체
+    linear→sRGB 일관(sRGB swapchain 또는 공용 톤매핑 패스).
+  - (e) 후순위: MSAA/TAA(specular aliasing), clearcoat/sheen 등 glTF 확장.
+    lbsvm 도메인 필요를 넘는 건 과투자(plan §0).
+  - **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달). 착수 전 공개 헤더
     (device/texture/material/program.h) → lib/lbx deploy 사본 동기화 선행.
 
 - **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
