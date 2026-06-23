@@ -11,8 +11,10 @@
   swapchain 으로 이전(ImGui 는 오버레이), GPU 선택 유틸(통합 GPU 우선),
   표준 stdio/stdlib 호출을 lbx-core 래퍼로 전환, GFX_MESH 정점/인덱스 입력을
   `gfx_mesh_set_vertices`/`gfx_mesh_set_indices` 로(CPU 포인터 멤버 폐기),
-  **GFX_MESH binding 배열 모델(AoS/SoA/SoAoS)** + per-attr `attr_format` 오버라이드
-  (build 210, deploy 헤더 동기화 완료).
+  **GFX_MESH binding 배열 모델(AoS/SoA/SoAoS)** + per-attr `attr_format` 오버라이드,
+  **조명 토대(Scene UBO[VK]/개별 uniform[GLES] + 방향광·ambient·카메라 setter,
+  lit draw=N·L diffuse+ambient, Blinn-Phong specular), 큐브맵 환경 반사
+  (`GFX_TEXTURE_CUBE`, `reflect`+metallic 혼합)** — 양 백엔드 (build 210).
 
 - **최근 (2026-06-22)**: GFX_MESH 구조·백엔드 binding 모델 개편 완료(커밋 `3a78eb1`).
   plan.md §3.5 "결정 확정(2026-06-22)" 참조.
@@ -46,9 +48,14 @@
   metallic→반사강도 해석. 빌드+test 안정 실행 검증(시각 검증은 사용자 VS).
   **= lbsvm-core 차량 모델 흡수 분기점 도달.**
 
-- **다음**: 두 갈래 — (a) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달, 전략 아래),
-  (b) **3단계 PBR**(metallic-roughness Cook-Torrance) 본격화. 공개 헤더(device/texture/
-  material.h) 변경분의 lib/lbx deploy 사본 동기화는 차량 이주 착수 전 필요.
+- **다음**: 두 갈래 —
+  - (a) **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달, 전략 아래). 착수 전
+    공개 헤더(device/texture/material.h) → lib/lbx deploy 사본 동기화 선행.
+  - (b) **3단계 PBR** (metallic-roughness Cook-Torrance). **현 Phong 셰이더를 대체하지
+    않고 별도 program 으로 공존**(2026-06-23 결정 — 저사양=Phong, 고사양=PBR). 현
+    "PBR" kind 는 내용이 Blinn-Phong+큐브맵이라 **PHONG 으로 정명**하고 진짜 PBR 을
+    신설. 머티리얼에 셰이딩 모델 선택(런타임) + 저사양은 PBR program 미컴파일 가능.
+    plan §3.3 의 "PBR 단일 통합"을 이 공존 모델로 수정함.
 
 - **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
   아니라 **수직 슬라이스**로 이주. 분기 기준 = 경로별 API 안정성(PBR 완성 여부 아님).
