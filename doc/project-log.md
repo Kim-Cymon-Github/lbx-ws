@@ -25,10 +25,22 @@
   - **결정 D** (멀티머티리얼=서브메시 다중 draw, `mesh`=한 draw granularity 유지): 확정.
   - 그 전(06-16): test_vk 죽은 `#if 0` 코드 제거, plan.md §3.5 설계 재검토 기록.
 
-- **다음 (조명 토대 우선)**: 방향 결정 — **조명 로드맵 1단계(공통 조명 토대)를
-  먼저** 깐다. 동적 그림자(SoA)는 AoS 기반 기존 렌더링과 결이 달라 후순위로 분리.
-  남은 mesh 동적 경로(E의 `alloc_binding`/`map_attr`, VK multi-binding pipeline,
-  VK DYNAMIC 링버퍼)는 동적 그림자 이주 직전에 채운다(plan.md §3.5 `[~]`).
+- **최근 (2026-06-23): 조명 로드맵 1단계 완료 (VK 커밋 `40e78e5` + GLES `b9fe629`)**.
+  조명/카메라 setter 실구현 + lit(PBR) draw 경로(최소 조명: N·L diffuse + ambient).
+  - 공개 API: `gfx_set_directional_light(dir,color,intensity)` + `gfx_set_ambient_light`.
+  - VK: `_VK_SCENE_UBO`(192B std140, set 0) + PBR pipeline(set0=UBO/set1=albedo,
+    push=model+factors) + 1x1 기본 흰색 텍스처. 직렬 submit 이라 UBO 단일 버퍼.
+  - GLES: 개별 uniform 경로(UBO 대신, ES2/ES3 호환). builtin.gles 에 pbr 셰이더
+    추가 + build_shaders.bat 으로 .enc 재생성.
+  - 검증: 양 백엔드 빌드 통과 + test 안정 실행(크래시 0, VK 큐브 음영 시각 확인).
+    CLI 헤드리스 실행 DLL 셋업은 메모리 [[lbx-gfx-test-run-env]].
+  - 남은 것: 다중 텍스처 바인딩/조명 setter 의 GLES albedo 텍스처는 GLES 기본 텍스처
+    인프라 도입 시. mesh 동적 경로(E의 `alloc_binding`/`map_attr`, VK multi-binding
+    pipeline, DYNAMIC 링버퍼)는 동적 그림자 이주 직전(plan.md §3.5 `[~]`).
+
+- **다음 (조명 로드맵 2단계)**: Phong specular + 큐브맵 반사 = 차량 모델 흡수 채비.
+  material kind PHONG, `GFX_TEXTURE_CUBE` + `samplerCube` + `reflect(I,N)`. 1단계
+  Scene UBO/조명 토대 재사용. 2단계 완료가 lbsvm-core 차량 이주의 분기점(아래 전략).
 
 - **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
   아니라 **수직 슬라이스**로 이주. 분기 기준 = 경로별 API 안정성(PBR 완성 여부 아님).
