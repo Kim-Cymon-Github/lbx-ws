@@ -14,7 +14,8 @@
   **GFX_MESH binding 배열 모델(AoS/SoA/SoAoS)** + per-attr `attr_format` 오버라이드,
   **조명 토대(Scene UBO[VK]/개별 uniform[GLES] + 방향광·ambient·카메라 setter,
   lit draw=N·L diffuse+ambient, Blinn-Phong specular), 큐브맵 환경 반사
-  (`GFX_TEXTURE_CUBE`, `reflect`+metallic 혼합)** — 양 백엔드 (build 210).
+  (`GFX_TEXTURE_CUBE`, `reflect`+metallic 혼합), albedo 텍스처 경로 양 백엔드 정합
+  (기본 흰색/노멀/큐브 텍스처), tangent-space 노멀맵(TBN)** — 양 백엔드 (build 210).
 
 - **최근 (2026-06-22)**: GFX_MESH 구조·백엔드 binding 모델 개편 완료(커밋 `3a78eb1`).
   plan.md §3.5 "결정 확정(2026-06-22)" 참조.
