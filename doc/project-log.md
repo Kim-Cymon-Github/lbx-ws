@@ -10,23 +10,37 @@
   external image CPU import 텍스처, **depth buffer(GLES+VK)**, VK 테스트를 gfx 소유
   swapchain 으로 이전(ImGui 는 오버레이), GPU 선택 유틸(통합 GPU 우선),
   표준 stdio/stdlib 호출을 lbx-core 래퍼로 전환, GFX_MESH 정점/인덱스 입력을
-  `gfx_mesh_set_vertices`/`gfx_mesh_set_indices` 로(CPU 포인터 멤버 폐기).
+  `gfx_mesh_set_vertices`/`gfx_mesh_set_indices` 로(CPU 포인터 멤버 폐기),
+  **GFX_MESH binding 배열 모델(AoS/SoA/SoAoS)** + per-attr `attr_format` 오버라이드
+  (build 210, deploy 헤더 동기화 완료).
 
-- **최근 (2026-06-16)**:
-  - test_vk(`test/test_vk/main.cpp`)를 원본 ImGui Vulkan 예제 대비 정리 — 죽은 `#if 0`
-    블록(실은 1세대 실험 코드) 전부 제거, 변경점만 주석으로 남김.
-  - **GFX_MESH 설계 재검토**를 `lbx-gfx/doc/plan.md` §3.5 에 기록: (A) CPU 입력/GPU
-    자원/기하 설명 분리, (B) AoS·SoA 를 Vulkan binding 모델로 통합, (D) 멀티머티리얼=
-    서브메시 다중 draw(`mesh`=한 draw granularity 유지), (E) map 중심 입력 + BUFFER 풀
-    결합(`alloc_vertices(pool)`). 동적 그림자 SoA 워크드 예제 포함.
-  - 그중 **A 의 1차 실행**으로 GFX_MESH 에서 CPU 데이터 포인터 제거 → `set_vertices`/
-    `set_indices`(동기 복사) 도입, GLES/VK 양쪽 구현·빌드·실행 검증 완료.
-  - **내일 이어서**: plan.md §3.5 open 체크리스트에서 시작 — (B) binding 배열 struct,
-    (간극 1·3) vec2 position·vec4 f32 color attr, (E) `alloc_binding`/`map_attr` 동적
-    경로. 이게 갖춰지면 lbsvm-core 동적 그림자 이주로 연결. 배포용 `lib/lbx` 서브모듈의
-    헤더 복사본은 `set_*` 미반영 상태 — publish 동기화 별도 필요.
+- **최근 (2026-06-22)**: GFX_MESH 구조·백엔드 binding 모델 개편 완료(커밋 `3a78eb1`).
+  plan.md §3.5 "결정 확정(2026-06-22)" 참조.
+  - **결정 A** (CPU 데이터 포인터 제거 → `set_vertices`/`set_indices` 동기 복사): 완료.
+  - **결정 B** (AoS·SoA 를 Vulkan binding 모델로 통합): `GFX_MESH.bindings[8]` +
+    `binding_count` + per-attr `attr_binding[]` 도입·구현. AoS=binding 1개 degenerate
+    (기존 코드 무손), SoA/SoAoS=N개. GLES/VK 양쪽 bind 경로 구현·빌드 검증.
+  - **간극 1·3** (vec2 position / f32 color): per-attr `attr_format[]` 오버라이드
+    (`F32_2`/`F32_4`)로 해결. 0(DEFAULT)=슬롯 기본 포맷이라 기존 메시 무손.
+  - **결정 D** (멀티머티리얼=서브메시 다중 draw, `mesh`=한 draw granularity 유지): 확정.
+  - 그 전(06-16): test_vk 죽은 `#if 0` 코드 제거, plan.md §3.5 설계 재검토 기록.
 
-- **다음 (조명 로드맵)**: 1차 목표는 lbsvm-core 의 **차량 모델 렌더링 흡수**이고, 그건
+- **다음 (조명 토대 우선)**: 방향 결정 — **조명 로드맵 1단계(공통 조명 토대)를
+  먼저** 깐다. 동적 그림자(SoA)는 AoS 기반 기존 렌더링과 결이 달라 후순위로 분리.
+  남은 mesh 동적 경로(E의 `alloc_binding`/`map_attr`, VK multi-binding pipeline,
+  VK DYNAMIC 링버퍼)는 동적 그림자 이주 직전에 채운다(plan.md §3.5 `[~]`).
+
+- **lbsvm-core 이주 전략 (2026-06-23 결정, plan.md Phase D)**: "수평으로 조금씩"이
+  아니라 **수직 슬라이스**로 이주. 분기 기준 = 경로별 API 안정성(PBR 완성 여부 아님).
+  **1호 = 차량 렌더링, 시점 = 로드맵 2단계(조명+Phong+큐브맵) 완료** (풀 PBR/IBL
+  안 기다림). 기존 lbx-gl 경로와 **병행 검증**으로 빅뱅 리스크 제거. 동적 그림자는
+  별도 트랙·후순위. PBR/IBL은 흡수 후 데이터 주도 업그레이드(재작업 없음).
+
+- **glTF 로딩 방침**: 로더는 **lbx-gfx 코어 밖(test app)** — `cgltf` single-header만
+  `lib/`에 추가, glue가 `GFX_MESH`+`GFX_MATERIAL_PBR`로 변환. 텍스처는 기존 `lbx-stb`
+  재사용(추가 의존 0). glTF는 PBR 검증용이고 차량은 PLY(`lbsvm_model_ply`)라 별개.
+
+- **조명 로드맵 상세**: 1차 목표는 lbsvm-core 의 **차량 모델 렌더링 흡수**이고, 그건
   풀 PBR 이 아니라 **Phong + 큐브맵 반사**다. PBR 로 가는 길의 앞부분을 미리 까는
   셈이라 버리는 작업이 없다. 단계로 끊는다:
   1. **공통 조명 토대** (Phong/PBR 공유) — 조명/카메라 setter 실제 구현
