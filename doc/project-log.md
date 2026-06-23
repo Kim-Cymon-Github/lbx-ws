@@ -111,6 +111,14 @@
     linear→sRGB 일관(sRGB swapchain 또는 공용 톤매핑 패스).
   - (e) 후순위: MSAA/TAA(specular aliasing), clearcoat/sheen 등 glTF 확장.
     lbsvm 도메인 필요를 넘는 건 과투자(plan §0).
+  - **최적화 백로그(언젠가 — 현재 미적용)**:
+    - ① **ORM 텍스처 패킹** — 지금은 occlusion(R) / metal_rough(G,B)를 **별도 텍스처·
+      별도 descriptor set** 으로 로드한다. glTF 가 같은 이미지를 가리키면(ORM 관례)
+      **한 장(R=AO, G=roughness, B=metallic) + 1 샘플 + set 1개**로 합칠 수 있다.
+      텍스처/메모리 절약 + 임베디드 `maxBoundDescriptorSets`(4) 완화.
+    - ② **material 텍스처 set 묶기** — 현재 VK 는 albedo/normal/metal_rough/AO/emissive
+      를 set 1개씩(총 7-set). 한 set 의 여러 binding 으로 묶어야 임베디드 4 한계 충족.
+    - ①②는 **차량 이주 / 임베디드 타겟 적용 시 함께** 정리(PC 검증 단계에선 현 구조로 동작).
   - **lbsvm-core 차량 수직 슬라이스 이주**(분기점 도달). 착수 전 공개 헤더
     (device/texture/material/program.h) → lib/lbx deploy 사본 동기화 선행.
 
