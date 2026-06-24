@@ -68,9 +68,46 @@
     (하이라이트 검정). 임베디드도 PBR 은 highp 필요.
   - → **차량 모델 흡수에 충분한 PBR 수준 도달.**
 
+- **최근 (2026-06-24): 실제 차량(creta) 흡수 + PBR 품질 대폭 개선 + 차량 리그/IBL 설계**.
+  실제 차량 glTF(`2022_hyundai_creta.glb`, 56 prim·15 mat)로 전환하며 발견한 버그·품질을
+  연쇄 해결. lbx-gfx 커밋 다수(아래는 lbx-gfx repo 해시). **남은 항목·우선순위는 이제
+  `lbx-gfx/doc/pbr-status.md`(PBR) 와 `vehicle-rig.md`(차량 리그)** 로 분리·상세화.
+  - **descriptor pool 고갈 수정**(`fea861a`) — VK pool(maxSets 20/sampler 16)이 56 prim
+    텍스처에 고갈 → 모델+PBR 큐브 전체가 안 그려짐(Scene UBO set 할당까지 실패). 512 상향.
+    (cgltf 파싱 오류처럼 보였으나 실제는 pool — 파일·cgltf 무죄 standalone 확인.)
+  - **텍스처 dedup**(`fb671e4`) — (cgltf_texture,format) 캐시. primitive 마다 중복 로드를
+    유니크 이미지(10)로. ORM(occlusion=metalRough 동일 이미지)도 자동 1개. 소유권 캐시
+    이전 → 중복 해제 방지. (최적화 백로그 ① 일부 선반영.)
+  - **투명(유리) 블렌딩**(`fb671e4`) — 로더 alphaMode 읽기, OPAQUE→BLEND 2패스, VK PBR
+    파이프라인 src-over 전역. GLES depth test/write 분리(이전엔 test 를 write 에 묶어 투명이
+    가림 무시). 단 굴절(transmission) 미구현 → 유리는 어두운 틴트.
+  - **specular IBL cheap 버전**(`167a340`) — env 큐브 **mip 체인 GPU 생성**(VK blit /
+    GLES glGenerateMipmap — 매 프레임 재생성 가능 = 실시간 카메라 큐브의 토대) + roughness
+    LOD(blur) + **EnvBRDFApprox**(split-sum BRDF LUT 해석적 대체). 거친 타이어 가짜 광택·
+    엣지 글로우 해소. = 로드맵 (a) specular IBL 의 cheap 선구현.
+  - **diffuse IBL cheap 버전**(`70acb2a`) — 평평 ambient → env 흐린 mip(LOD4)을 N 으로
+    샘플(방향별 환경색) + env 반사 desaturate(0.8). = (a) diffuse irradiance 의 cheap 선구현.
+  - **clearcoat**(`4987d94`) — 차 도장 광택. base BRDF 위 유전체(F0=0.04) 반사층(직접광+env,
+    base 를 (1-Fc) 감쇠). material 필드 + VK push/GLES uniform + ImGui 슬라이더 + 로더가
+    "paint" 머티리얼에 자동 부여. (로드맵 (e) → pbr-status.md B2 "차량 핵심"으로 승격.)
+  - **env PNG 로딩 + HDR→cube 변환**(`53c7f10` + `tool/equirect_to_cube.py`) — stb 를
+    LBX_IMAGE 핸들러로 통합(svmdemo_main 패턴), env 큐브를 6면 PNG 로(없으면 .lbi 폴백).
+    Poly Haven `german_town_street_1k.hdr` 를 numpy+cv2 스크립트로 equirect→cube 6면 PNG
+    변환(sRGB 인코딩). 아직 **LDR** — 진짜 HDR float(RGBA16F) 은 후속.
+  - **설계 문서 신설(lbx-gfx/doc/)**: `pbr-status.md`(구현 현황·미구현·우선순위),
+    `vehicle-rig.md`(부품 분리·노드 extras 태깅·도어 3종 모션[힌지/슬라이드/경로 가이드라인]·
+    바퀴 템플릿 인스턴싱·3D N-slice 치수 변형[화물칸 길이]·반투명 부위별 FBO 합성).
+  - **함정 기록**: 셰이더 **BOM**(에디터 BOM 저장→glslc 실패; `.editorconfig` 셰이더 no-BOM
+    override), **stale DLL 그림자**(exe-dir 복사본이 lib 신선 빌드 가림 → vcxproj PATH 운용,
+    DLL 복사 금지). 둘 다 메모리/문서화.
+
 - **다음 (완성도 PBR 로드맵)**: 차량 흡수엔 현 수준 충분(thin layer 목표 달성).
   "진짜 완성 PBR"로 가면 IBL 만으로는 부족하고 아래가 함께 필요:
-  - (a) **4단계 IBL** — 환경광 정식화. 가장 큰 한 걸음. **내일 바로 시작 가이드**:
+  > **상세 미구현·우선순위는 `lbx-gfx/doc/pbr-status.md` 로 이관(2026-06-24)** — 아래는
+  > 큰 그림. cheap IBL specular/diffuse + clearcoat 는 06-24 선구현, 정식은 pbr-status.md A/B2.
+  - (a) **4단계 IBL** — 환경광 정식화. 가장 큰 한 걸음. **cheap 버전(mip blur+EnvBRDFApprox,
+    env mip 을 N 으로 diffuse) 06-24 선구현**; 정식 prefilter/irradiance/BRDF LUT 는 미구현.
+    **내일 바로 시작 가이드**:
     1. **자원**: Poly Haven `.hdr`(equirect, 2:1 파노라마, CC0 무료) → `test/assets/`.
        stb 의 `stbi_loadf` 로 float 로드(stb 이미 보유). 1k~2k 면 충분.
     2. **전처리(굽기)** = 3가지 맵 생성:
@@ -109,8 +146,9 @@
   - (c) **그림자**(directional shadow map) — 입체감·접지감.
   - (d) **색 파이프라인 정합** — 현재 PBR 만 ACES/감마. Phong/blit/unlit 포함 전체
     linear→sRGB 일관(sRGB swapchain 또는 공용 톤매핑 패스).
-  - (e) 후순위: MSAA/TAA(specular aliasing), clearcoat/sheen 등 glTF 확장.
-    lbsvm 도메인 필요를 넘는 건 과투자(plan §0).
+  - (e) 후순위: MSAA/TAA(specular aliasing), sheen 등 glTF 확장.
+    lbsvm 도메인 필요를 넘는 건 과투자(plan §0). **clearcoat 는 차 도장 핵심이라 06-24
+    구현 완료**(pbr-status.md B2 로 승격).
   - **최적화 백로그(언젠가 — 현재 미적용)**:
     - ① **ORM 텍스처 패킹** — 지금은 occlusion(R) / metal_rough(G,B)를 **별도 텍스처·
       별도 descriptor set** 으로 로드한다. glTF 가 같은 이미지를 가리키면(ORM 관례)
