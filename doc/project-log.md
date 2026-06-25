@@ -101,12 +101,45 @@
     override), **stale DLL 그림자**(exe-dir 복사본이 lib 신선 빌드 가림 → vcxproj PATH 운용,
     DLL 복사 금지). 둘 다 메모리/문서화.
 
+- **최근 (2026-06-25): PBR 품질 두 축 해결 + 머티리얼 처리 데이터 주도화 + per-material
+  에디터** (lbx-gfx 커밋 `d03c3e6`~`bb22e28`, 7개). 코어/셰이더는 트랙 A·B 이후 무변경 —
+  나머지는 전부 테스트 앱(데이터 주도 설계의 보상).
+  - **ui.cpp 분리**(`d03c3e6`) — 데모 ImGui 위젯을 main.cpp(양 백엔드 중복)에서 `test/src/
+    ui.cpp` 한 곳으로. main.cpp 의 "Hello, world!" 창은 예제 원본 복원, `ui_draw()` 한 줄 호출.
+  - **트랙 A — specular occlusion + exposure + env-spec 노브**(`dc75b8f`). 타이어 코로나
+    (실루엣 스침각 env 반사)를 horizon(반사 R 이 기하면 아래로 향하면 페이드) × spec AO
+    (Lagarde)로 억제. roughness 올리면 사라지는 걸로 BRDF 버그 아닌 specular IBL 현상 확정.
+    exposure(ACES 전 곱)·env_spec 전역 노브. `gfx_set_render_tuning`, Scene UBO `.w` 패킹.
+  - **트랙 B — SH-9 diffuse IBL**(`2fe3497`). cheap diffuse(env 흐린 mip 단일 샘플)의 회전
+    시 ambient 깜박임(저해상도 방향성 노이즈) 해소. env 큐브를 SH-9 계수로 투영(앱 측,
+    Ramamoorthi/Green) → 셰이더가 매끈한 반구 적분 irradiance 평가. `gfx_set_irradiance_sh`,
+    VK Scene UBO `vec4 sh[9]` 확장. **= 정식 diffuse IBL(pbr-status.md A 절반) 완료**, 동적
+    카메라 큐브로도 직결(SH 재투영이 쌈).
+  - **clearcoat 데이터 주도화**(`862789f`) — 이름 휴리스틱(`"paint"` 부분일치→1.0; 그릴까지
+    먹어 요철 죽던 버그) 폐기, `KHR_materials_clearcoat` 읽기(없으면 0=glTF 기본). 엔진이
+    콘텐츠를 추측하지 않는다(vehicle-rig.md "이름에 파라미터 박지 않는다"와 정합).
+  - **재색칠/머티리얼 편집** — 처음엔 이름 타게팅 override(`0e4451c`: base_color 교체 +
+    틴트/단색)였다가, **per-material 에디터로 일반화**(`bb22e28`): 머티리얼 선택 → base_color/
+    metallic/roughness/clearcoat/normal/emissive/albedo 직접 편집(override 토글 폐기, draw 가
+    편집 레코드 직접 사용). recolor·clearcoat·metal/rough override 가 에디터로 수렴(코드 순삭).
+    조명/노출/카메라는 씬 전역 유지. **코어 0 변경**(GFX_MATERIAL_PBR 이 이미 전 필드 보유).
+  - 부수: auto-rotate 토글(정지 관찰), 마우스 오비트 카메라는 별도 작업(`task` 큐).
+  - 함정: 차량 3종(creta/santa_fe/prius) paint 머티리얼은 baseColorTexture 없음(색=factor)이라
+    재색칠은 단색 교체=틴트 동일. 셰이더 toolchain 가용(glslc=VulkanSDK, python=miniforge ltk).
+
+- **다음 — 차량 애니메이션(vehicle-rig.md)**: 부품 분리·변환 토대는 섰고(per-material 편집·
+  서브메시 리스트), 이제 리그/모션. 바퀴 회전·조향·리프트, 도어 3종 모션은 설계대로 가능 예상.
+  - **미해결 — 캐터필러(무한궤도) 표현**: 타겟 차량에 **굴착기(excavator)** 가 있어 트랙이 필요.
+    바퀴 인스턴싱(강체 복제)과 결이 다름 — 궤도는 연속 벨트(스프로킷·롤러 위를 도는 링크 체인)라
+    별도 표현 방식 필요(UV 스크롤 / 링크 인스턴싱 경로구동 / 셰이더 변형 등 후보). 설계 미정.
+
 - **다음 (완성도 PBR 로드맵)**: 차량 흡수엔 현 수준 충분(thin layer 목표 달성).
   "진짜 완성 PBR"로 가면 IBL 만으로는 부족하고 아래가 함께 필요:
   > **상세 미구현·우선순위는 `lbx-gfx/doc/pbr-status.md` 로 이관(2026-06-24)** — 아래는
   > 큰 그림. cheap IBL specular/diffuse + clearcoat 는 06-24 선구현, 정식은 pbr-status.md A/B2.
-  - (a) **4단계 IBL** — 환경광 정식화. 가장 큰 한 걸음. **cheap 버전(mip blur+EnvBRDFApprox,
-    env mip 을 N 으로 diffuse) 06-24 선구현**; 정식 prefilter/irradiance/BRDF LUT 는 미구현.
+  - (a) **4단계 IBL** — 환경광 정식화. **diffuse 절반 = SH-9 정식 완료(06-25, 트랙 B)**.
+    cheap specular(mip blur+EnvBRDFApprox) 06-24 선구현; **정식 specular prefilter/BRDF LUT 는
+    미구현**(남은 절반). diffuse 는 cheap mip→SH-9 로 교체 완료.
     **내일 바로 시작 가이드**:
     1. **자원**: Poly Haven `.hdr`(equirect, 2:1 파노라마, CC0 무료) → `test/assets/`.
        stb 의 `stbi_loadf` 로 float 로드(stb 이미 보유). 1k~2k 면 충분.
