@@ -239,6 +239,48 @@
   숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
 
+- **최근 (2026-06-25): CAN 입력 흡수 + transparent topview 투영면 이중화 (CAN/tptopview 세션 — lbx-gfx 그래픽 세션과 별개)**.
+
+  **A) MCU UART → CCAN 입력 브리지** (`test/src/mcu/`: navitech.* + svmdemo_mcucan.*).
+  - 2100R `Tifboard`(navitech) 흡수. R5 프레이밍/`0x38` 파싱은 그대로 두고, cmd `0x38`
+    콜백에서 `swap_endian32`로 CAN ID 뽑아 `LBX_MSG('CCAN', LBX_CAN_PACKET)` Enq →
+    기존 VCP(TCP)·SL-CAN(UDP) 과 **동일 버스(`LBX_CQ`)·동일 소비(`ProcessMsgs`)**.
+  - **WHY**: "드라이버를 어떻게 만들든 이만큼 작고 안전하게(앱은 출처 모름, 드라이버는
+    버스 모름) CCAN 버스에 붙는다"는 연결 패턴 시연. 입력=msg 단일 체계. 발단은
+    tptopview 에 odometry(휠펄스→이동거리, 조향→회전중심)를 먹이려던 것.
+  - 시리얼은 **lbx-intf 의 크로스플랫폼 comX**(fredslab, MIT)로 통일 — termios
+    `UartDevice`·Teunis `RS232_*`(GPL) 폐기. **WHY**: lbx 가 win/linux 공통 시리얼을
+    이미 제공하므로 전용/플랫폼 코드가 불필요(이득 0), GPL 오염 회피. 프레이밍이 가치지
+    포트 여닫는 코드가 가치가 아님.
+  - 구 RCM 가변벡터 API → 신형 SVEC 로 직접 개명(`svec_length`/`SVEC_DROP`/`SVEC_APPEND`),
+    compat 셔임 제거(친절 과잉이라 판단). 매핑 정본 = `I:\eyeL-2100R\lbx\lbx_compat.h`.
+  - **lbx-intf 변경**: `rs232_exports.def` 로 comX 11개 export(소스 무수정, 기존
+    dllexport 와 병합), 4 config `<Link>` 에 연결. Linux 는 기본 노출이라 무관. `rs232`
+    를 lbsvm-core `lib/rs232` **서브모듈**로 추가(헤더용; `.c` 는 미컴파일, 심볼은
+    lbx-intf 에서 import).
+  - 검증: test-lbsvm-core x64 Debug 링크 통과. comX export 는 dumpbin 으로 확인.
+
+  **B) transparent topview(tptopview) 투영면 이중화** (`src/lbsvm_projection.cpp`).
+  - 배경: tptopview 는 lbsvm-core 엔 있고 2100R 엔 없다(아래 eyeL-2100R 항목 = 2100R 로
+    역포팅 계획). 그 선결로, 현 lbsvm-core tptopview 가 **일반 topview 를 깨뜨린 채
+    방치**돼 있던 것을 먼저 고침.
+  - 문제: `BuildBowlProjSurface`/`BuildTopviewProjSurface` 가 통합 `BuildFullProjSurface`
+    로 위임되며, tptopview 용 블렌딩 둘(①바닥 뿌리 투명 `:351`, ②사이드오버랩 중간밴드
+    투명 `:297`)이 **bowl 에도 무조건 적용** → 위에서 볼 때 **H자 빈틈**. (2100R 원본
+    bowl 엔 둘 다 없고 전부 불투명.)
+  - 해결: ①②를 `if(flat)` 로 가드 → bowl(일반 topview)은 전 정점 불투명 = 2100R 동작
+    복원. flat(tptopview FBO 전용)만 블렌딩 유지. **= 투영면 이중화**.
+  - flat 면: 클립 round-rect **균일 100mm 옵셋확대**(`TP_SIDE_OFFSET`) + 프로파일
+    **스커트 200mm**(`TP_BLEND_SKIRT`, 안쪽 v0 α0 → 바깥 α1 램프). **WHY 균일확대**:
+    좌우만 넓히면 앞↔옆 접합부(코너) 가 어긋남 → 균일 옵셋이라야 접합 유지. 첫 100mm
+    미생성 = 차량근접부를 띄워 조향 시 바퀴 튀어나옴 회피. **WHY 이중화**: bowl 은
+    불투명·완전커버, tptopview FBO 는 평면·블렌딩·차체밑 누적 — 요구가 정반대라 한 면으로
+    불가.
+  - 빌드 통과. **시각/실차 검증 미완**(H자 해소·flat 품질은 화면이라야 보임, 헤드리스 불가).
+  - 다음(Step 2): 차에서 직접 튜닝하는 UI(`svmdemo_ui.cpp` 기존 슬라이더 인프라 위에
+    `TP_SIDE_OFFSET`/`TP_BLEND_SKIRT`/`mm_per_pulse`/전륜 조향각 범위 추가). **WHY**:
+    record/replay 가 없어 실차에서 튜닝해야 하므로.
+
 ## lbx-geo (진행)
 
 - **진행**: `lbx_rect` 를 `lbx_proj`(투영) + `lbx_poly`(폴리곤 생성)로 파일 분리.
@@ -258,6 +300,22 @@
 
 - RADIAL 그림자를 구형 레포(`I:\eyeL-2100R`)로 이식(앱 좌표 직접 사용, radii/per-side
   재매핑). Clipper2/UI 연동은 보류.
+
+- **transparent topview 역포팅 검토 (2026-06-25)**: lbsvm-core 에 CAN 을 붙이려던 목적이
+  tptopview 인데, 정작 제품(현역 2100R)엔 그 기능이 없다. **lbsvm-core → 2100R 포팅
+  가능성 분석 결과 = 가능**(난이도 낮음~중간). 두 레포가 **같은 lbx 조상**이라 토대가
+  2100R 에 이미 다 있음 — `TGLFrameBufferObject`/`TGLProgram`(lbx_gles2.h), `TLBView` +
+  `TLBShape::LocalCoord()`(lbsvm_classes.cpp:983), odometry(휠펄스+조향→회전반경 `CalcR`
+  lbsvm_model.cpp:24). 신규는 `TLBTransparentTopview` 클래스(~200줄, FBO 2개 핑퐁 +
+  odometry 모션 시프트로 차체밑을 과거 프레임으로 채우는 see-through) + 셰이더 2개
+  (`general_vert`+`extimg_frag`, 표준 텍스처 패스스루)뿐. 나머지는 신↔구 이름 정합 +
+  소소한 어댑터(2100R FBO 는 단일샘플 → `multisamples=1`; float 텍스처 우려는 기우 —
+  누적이 아니라 텍스처 시프트 재드로라 RGBA8 충분).
+  - **WHY 역방향**: 제품에 기능을 빨리 태우는 데는 2100R 이 지름길 — odometry/CAN 을
+    이미 네이티브로 가져서 CAN 흡수가 불필요. lbsvm-core 의 CAN 작업은 PC/신규 타깃에서
+    실차 데이터로 돌리는 독립 가치로 유지(두 트랙 목적이 다름).
+  - **선결**: lbsvm-core tptopview 가 일반 topview 를 깨뜨려 둔 상태라, 투영면 이중화부터
+    수리(위 lbsvm-core 2026-06-25 B 항목). 그게 안정되면 2100R 로 클래스+셰이더 이식.
 
 ## ltk — 빌드/운영 도구 (진행)
 
