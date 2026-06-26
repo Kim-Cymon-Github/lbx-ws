@@ -239,6 +239,26 @@
   숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
 
+- **최근 (2026-06-26): 동적그림자 외곽 블렌딩을 바깥 스커트→안쪽 페이드로 전환 (커밋 `bf60cb5`)**.
+  - tptopview 역포팅 선결로 동적그림자(RADIAL_LOD)를 손보던 중, 외곽 블렌딩이 차량
+    footprint 바깥에 스커트 링(RADIAL=`append_staggered_band` C2, GRID/CDT=
+    `build_skirt_mesh` Clipper offset)을 생성하는 방식이라 번거롭고, Clipper offset 은
+    코너 정점 몰림 아티팩트가 있었다.
+  - 변경: **per-vertex edge distance**(각 정점→boundary loop 최단거리)를 정점 attribute 로
+    싣고 셰이더가 `smoothstep(0, uFadeWidth, edge_dist)`로 **안쪽 페이드**. 스커트 생성
+    전면 제거. 메시 boundary 를 블라인드스팟+margin 으로 키워(GRID/CDT 는 `skirt_offset_mm`
+    재활용) 최외곽이 색경계가 되게 한다. 세 mesh_type(RADIAL_LOD/GRID/CDT) **동일 방식 통일**.
+  - 셰이더 `drawing_vert/frag` 에 `aEdgeDist`/`uFadeWidth`(>0일 때만 — 공유 솔리드 셰이더
+    보호) + `.enc` 재생성. `RenderShadow` 가 `uFadeWidth`(`shadow_fade_width`, 기본 100mm) 바인딩.
+  - UI: **두 축 분리·용어 통일** — `Margin`(블라인드스팟→색경계, 메시 범위) / `Blend Width`
+    (페이드 구간). Blend Width 는 셰이더 유니폼이라 실시간 조정(재빌드 불필요). 무력화된
+    C1→C2 슬라이더 제거.
+  - **WHY 안쪽 페이드**: 임의 외곽(비대칭/타원 R)엔 중심거리 fade 불가 → 외곽선까지 실측
+    거리를 정점에 굽는 게 정답(barycentric 은 삼각형 크기 의존이라 부적합). 색 샘플을
+    블라인드스팟+margin 으로 잡으면 바깥 스커트 geometry 가 불필요해진다(안쪽 페이드).
+  - 설계문서(`doc/Transparent_Topview_Composite_Design.md`) §0·§3 갱신 — Step 2 가 가정하던
+    '스커트(C2) 알파'를 'edge_dist 페이드 알파'로.
+
 - **최근 (2026-06-25): CAN 입력 흡수 + transparent topview 투영면 이중화 (CAN/tptopview 세션 — lbx-gfx 그래픽 세션과 별개)**.
 
   **A) MCU UART → CCAN 입력 브리지** (`test/src/mcu/`: navitech.* + svmdemo_mcucan.*).
