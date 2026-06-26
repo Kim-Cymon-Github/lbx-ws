@@ -239,7 +239,19 @@
   숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
 
-- **최근 (2026-06-26): 동적그림자 외곽 블렌딩을 바깥 스커트→안쪽 페이드로 전환 (커밋 `bf60cb5`)**.
+- **최근 (2026-06-26 오후): tptopview Step 2 핵심 완성 — FBO 를 동적그림자 메시 채움 소스로 (커밋 `57e1a11`+`4ab9e3a`)**.
+  - FBO 합성 모드 3종(Off / Mix[fbo.a 무시] / Overlay[fbo.a로 빈영역 Laplacian]), shadow
+    color 최종 곱(FBO 도 회색 그림자 따라 어두워짐), flat 투영면 구멍 `shadow_bounds` 자동매칭
+    (+margin), FBO 핑퐁 2벌 디버그(ImGui).
+  - **핵심 버그픽스 — `tp.Clear()` variable shadowing**: 바깥 `i` 가 안쪽 for `i` 에 가려져
+    `Release()` 누락 → FBO bind 잔류 → 메인 화면 clear(배경색)가 FBO 에 오염. 그동안의
+    '배경색 오염·차오름'·'displacement 가드 먹통'의 **실제 원인**(alpha 누적·가드 다 헛다리).
+    한 줄짜리 shadowing 이 하루를 잡아먹음.
+  - **교훈**: FBO 투영면을 bowl 과 분리(scene_tp/flat)해 따로 가져간 설계가 **옳았음 확인** —
+    flat 구멍을 그림자 영역만큼 키워야 과거영상이 채워진다(작은 구멍이면 현재영상만 덮어써짐).
+  - 상세·담주 TODO(FBO flat 의 전후방 커버 쿼드 제거): `doc/Transparent_Topview_Composite_Design.md` §8.
+
+- **최근 (2026-06-26 오전): 동적그림자 외곽 블렌딩을 바깥 스커트→안쪽 페이드로 전환 (커밋 `bf60cb5`)**.
   - tptopview 역포팅 선결로 동적그림자(RADIAL_LOD)를 손보던 중, 외곽 블렌딩이 차량
     footprint 바깥에 스커트 링(RADIAL=`append_staggered_band` C2, GRID/CDT=
     `build_skirt_mesh` Clipper offset)을 생성하는 방식이라 번거롭고, Clipper offset 은
