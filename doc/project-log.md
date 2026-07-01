@@ -231,6 +231,44 @@
 
 - 설계: `lbx-gfx/doc/plan.md`, `lbx-gfx/doc/ndc-convention.md`.
 
+## lbx-core — 토대 라이브러리 (활발)
+
+- **lbx::var 도입 + RTTI 2.0 직렬화 (2026-07-01)**: `var_t` 를 값-중심 move 유통의 DOM
+  허브로 확립하고, 그 위에 nlohmann-json 스타일 C++ 편의층을 얹음. 커밋 `5a83eb6`(클래스)
+  → `8f106a3`(C++11 가드) → `c542a6e`(RTTI 직렬화) → `595bbc0`·`2db0d5c`(파서 누수 픽스).
+  - **개명**: C++ `Variant` → `lbx::var`(namespace `lbx`, `class var : public var_t`).
+    레거시 `Var`/`VarRef` 는 폐기 대상으로 존치. 사용처(test/svmdemo_core/cal_module) 전부 이관.
+  - **nlohmann 초기화**: `initializer_list` 생성자 + 스칼라 변환 생성자.
+    `{ {"k",v}, ... }` = 모든 원소가 [문자열,값] 2-원소 배열이면 객체, 아니면 배열.
+  - **C++11 가드**: `lbx_type.h` 에 `LBX_HAS_CPP11`(`__cplusplus`/`_MSVC_LANG` 병행 —
+    MSVC `/Zc:__cplusplus` 미지정 대비), `lbx::var` 전체를 `#if LBX_HAS_CPP11` 로 감쌈
+    (pre-C++11 / TCC C 빌드 안전). 9개 크로스 타깃 컴파일 검증.
+  - **문자열 헬퍼**: `var_get_strl`(SSTR/USTR/CSTR 통합 길이) 헤더 노출 + `StrLen()`/`IsString()`.
+  - **RTTI 2.0 ↔ var (핵심 결정)**: **var 가 DOM 허브. RTTI 는 struct↔var 만.** JSON 은
+    전적으로 var 가 담당(RTTI 는 JSON 을 직접 안 만짐). 이터레이터 직렬화안(`rtti_write_json`
+    `#if 0`) 폐기 — SAX 는 짜기 번잡, DOM(=var)이 정답.
+    - `var_from_struct`(struct→var 신규)/`var_to_struct`(var→struct, 2.0 스텁 채움).
+      value-in/value-out move 규약. 스칼라 최타이트 인코딩, ustr 은 복사 대신 공유.
+    - `LBX_REFLECT(T, 멤버…)` 매크로(멤버 이름만; `decltype` 로 타입 자동추론) +
+      `rtti_of<T>()` 트레잇 + `to_var<T>()`/`var::get<T>()`. `ustr_t` 스칼라 RTTI 추가.
+    - 결정 배경 상세: auto-memory `rtti-serialization-architecture`.
+  - **JSON 파서 누수 픽스 (진짜 원인 규명)**: 잘못된 JSON(`{ "a": / }`) 파싱 시 21B 누수를
+    WSL LSan 이 포착. **원인 = `read_string` 이 에러 경로(`lbl_error`)에서 자기 누적 버퍼
+    `t` 를 안 푸는 것** — `SUPPORT_YAML` 이 켜져 lone `/` 를 YAML 중첩객체 시작으로 오해석
+    → `read_string('}')` 호출 → `:`/종료 못찾고 lbl_error → t 누수. 픽스 = lbl_error 에
+    `svec_drop(&t)` (+ `var_json_`/`var_read_json_str` 에러경로 부분트리 해제, 키 처리 move).
+    - **얕은 refcount 모델·키 소유권과 무관**을 격리 재현 + 파서 내부 rc 프로브로 증명
+      (키 rc 는 항상 `1→2→1→0` 균형).
+  - **테스트**: `test/src/test_var.h`(init 파싱/StrLen/flow/JSON주석/reflection 왕복). 9타깃 빌드 +
+    WSL ASAN 357/359 통과, 누수 0.
+  - **미커밋(작업트리, 세션 이월)**: 진단용 `svec_refcount`(svec 읽기전용 rc 피크, `lbx_svec.{h,c}`)
+    + `test_var_rc_probe`(키 소유권 rc 균형 검증). 유지·커밋 여부 미정.
+  - **다음**:
+    1. **얕은 컨테이너 RC 검증 스트레스 테스트** — 계획서 `lbx-core/doc/shallow-rc-validation-plan.md`.
+       (`var_t` obj/array 는 최상위 버퍼 rc 만 보는 1단계 모델이라 완전검증 미완. **꼭 해야 함.**)
+    2. `LBX_REFLECT` 배열/핸들러·`char[N]`/`const char*` 문자열 멤버 확장(코어는 배열 지원).
+    3. RTTI 1.0(`LBX_REFL_*`) 사용 6파일 2.0 이주 → 1.0 코드 전부 제거.
+
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
 
 - **진행**: Shadow/Poly/Geo 리팩토링(이름 변경보다 의존 방향 정리·중복 제거 우선,
@@ -329,6 +367,32 @@
   `cal/cal-flood/doc/Cal_Module_Plugin_Design.md`.
 
 ## eyeL-2100R — 구형 레포 포팅 (별건)
+
+- **최근 (2026-07-01): CAN 연동 완성 — 휠펄스 오도메트리 이식 + 실차 기어 ID 픽스. 화면검증 완료, 차량테스트 대기.**
+  상세는 위 RESUME 문서 §3. 커밋 `b42e9f98`(gear) + `ca1771d3`(오도메트리).
+  - **원인 규명**: "휠펄스 들어오는데 바퀴 안 돎" = 활성 CAN 핸들러가 `parse_kia_carnival`(JSON_CAN_DB
+    off라 DB주도 `parse_vehicle_json`은 죽은 코드)인데, 실차 gear=**0x111(TCU11)**만 미처리(0x52A/0x59B
+    Kia Carnival/K7만 봄) → gear 'P' 고착 → `ani.Begin`이 D/R서만 불려 정지. SAS 0x2b0·휠펄스 0x387은
+    원래 완비. MCU는 PHY필터 아니라 `rxCanId[]` 사전등록 ID만 UART 포워딩 → 0x111 등재+parse case 추가.
+  - **오도메트리**(lbsvm-core `update_pulse_diff` 이식, 2축 적응): 254→0 오버플로·WHL_DIR방향·기어폴백
+    (방향마스크 0x03f→0x03 버그픽스). `UpdateOdometry`(프레임당): displacement=후륜Δ평균×mm/pulse[rear],
+    바퀴각=거리/(2πr)×360 (mm/pulse·굴림반경 정확값, 구 rot_inc 7.8° 매직 폐기).
+  - **가상 카운트업**(기본ON=엔지니어링, 실차 시 해제)이 동일 update_pulse_diff 경로로 전 로직 검증.
+    튜닝 UI: 기어 P/R/N/D 버튼, mm/pulse Link F=R, Wheel radius, Virtual pulse(±pulses/frame).
+  - **다음**: ① 실차 mm/pulse·SAS범위·전륜조향각 튜닝. ② lbsvm-core 역반영(가상카운트업·바퀴애니·0x03
+    픽스; 최대한 동일코드로 이식해둠).
+
+- **(2026-06-30): TpTopview + 동적그림자(셰이더 블렌딩) 역포팅 핵심 완료, 다음=CAN 연동.**
+  상세 현황·재개 메모는 **[`I:\eyeL-2100R\docs\TPTOPVIEW_PORT_RESUME.md`](file:///I:/eyeL-2100R/docs/TPTOPVIEW_PORT_RESUME.md)** 참조
+  (어디까지 됐고 뭐 더 해야하는지, 빌드/실행, 커밋상태, CAN 연동 계획까지 그 문서만 보면 이어갈 수준).
+  - **완료(화면검증)**: TpTopview 누적(컬러전용 FBO·viewport 우회·의미축 어댑터 `veh_world_vec`),
+    동적그림자 신방식(스커트 제거→edge_dist+셰이더 smoothstep), TP를 그림자 셰이더에 합성(탑뷰·3D뷰),
+    그림자 클립↔TP 투영면 연동(see-through), Shadow Color/alpha, 선회부호, UI를 lbsvm-core
+    "Topview & Shadow Tuning"에 상응(extents Lh/Fr/Rh/Bk, Save/Load=nlohmann json), mm/pulse(축별).
+  - **lbsvm-core 원본에도** 의미축 어댑터 반영(동작보존, ISO=항등; `feature/shadow-upgrade` 미커밋).
+  - **다음**: CAN 연동 — 0x2b0(SAS)/0x111(gear)/0x387(휠펄스) 등록, **가상 disp→4바퀴 휠펄스 가산
+    (254→0 오버플로)→모션+바퀴애니**, 후진=기어. lbsvm-core에도 적용 대상. (자세히는 위 RESUME 문서)
+  - 2100R 커밋 `2759206c`(핵심) + 이후 UI/mm-pulse/어댑터 미커밋.
 
 - RADIAL 그림자를 구형 레포(`I:\eyeL-2100R`)로 이식(앱 좌표 직접 사용, radii/per-side
   재매핑). Clipper2/UI 연동은 보류.
