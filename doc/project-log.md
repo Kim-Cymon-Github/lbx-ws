@@ -277,7 +277,41 @@
   숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
 
-- **최근 (2026-06-26 오후): tptopview Step 2 핵심 완성 — FBO 를 동적그림자 메시 채움 소스로 (커밋 `57e1a11`+`4ab9e3a`)**.
+- **최근 (2026-07-07): svmdemo cal 모듈(cal-ox4/hkmc) 연동 완성 — Auto/Manual Cal + 실시간 연동 + 3계층 런타임 설정. 하루 6커밋(`e6170d6`→`eada20f`), 계획/진행 정본은 [`lbsvm-core/doc/Cal_Module_Integration_Plan.md`](file:///L:/lbsvm-core/doc/Cal_Module_Integration_Plan.md).**
+  - **Step 0 — svmdemo 양측 동기화**: Test UI 는 eyel2sdk 최신(Camera Parameters 편집기
+    역포팅: 썸네일+Lens/Area/Pose 편집), 하위 창은 lbsvm-core 최신(TpTopview 통합 Tuning,
+    신형 그림자, 오도메트리)을 eyel2sdk 로. Driving Simulator 삭제, TP FBO Debug 체크박스화.
+    **이후 eyel2sdk 는 당분간 동결** — lbsvm-core 만 작업.
+  - **Step 1 — 3계층 런타임 설정**: 내장 기본값(`MakeDefaultDemoConfig`, 플랫폼 #ifdef 이 안에만)
+    ← `lbsvm.config` ← 인자(`--config <path>` / `'{...}'` 인라인 JSON). `var_overlay`(객체 재귀,
+    스칼라/배열 통째). NM12(텔레칩스)/NV12(RK)를 한 리눅스 바이너리로 커버.
+    `VCAP_MAX(8)`+`capture.count` 분리(s3000abr 8캠 대비, SVM 소비는 CAM_CNT=4 유지).
+  - **Step 2/3 — cal 브리지 + UI**: 런타임 DLL 로드(링크 無, `close_library` 명시 언로드),
+    임시 `LBX_CAMERA[4]` 브리지(TLBCamera 는 vptr 라 배열 전달 불가, 소문자 id 필수),
+    Calibration 메뉴(Method 라디오/Auto Cal/결과/Save .cal/Revert), Manual Cal =
+    모듈 RenderUI 프레임 구동(`LBX_CAL_UI_TARGET` 을 lbx-intf 로 공개 승격, 창내 Auto Cal 버튼).
+    `cal.autostart`("auto"|"manual") 훅으로 부팅 즉시 캘 경로 진입(자가 재현/헤드리스용).
+  - **버그 3건 규명·픽스**:
+    1. cal-flood `cal_module_run` 이 ok/failed_mask **미집계**(초기값 반환) → 전 카메라
+       실패도 전체 OK. 집계 추가(`de09bb6`).
+    2. **좌표 원점**: cal/패턴=뒷범퍼 원점, 런타임=차량 원점(`LoadV1CalFile` 이 extents.back
+       감산). 축·각·렌즈 동일, x 만 다름 — 변환 누락으로 Apply 후 전 카메라가 전방으로 밀림
+       ("초기치가 더 정확" 증상). 브리지 양방향 원점 변환.
+    3. **Master Cal 오픈 50s(Debug)/10s(Release)**: `TextureFilterCallback` 이 GFX 태그
+       u64 핸들을 GLuint 로 잘라 존재하지 않는 id 에 `glBindTexture`(GL 은 bind 로 객체 생성)
+       → PVR 에뮬서 첫 호출당 수 초. native id/target 추출로 픽스, 계측 27,757ms→3ms.
+  - **실시간 연동(구조 개정)**: `CalPullPush()` — `cal_pushed_*` 대비 변경 주체 판정, 모듈
+    변경(Run/수동 solve)은 즉시 렌더로 pull(+`LBX_CAMERA_Update`), 호스트 변경(Camera
+    Parameters 편집)은 즉시 모듈 오버레이로 push. 복사본의 존재 이유 = 배열 브리지 +
+    Revert 스냅샷뿐. Master Cal 뷰어는 area UV 로 StdImage 표시(스트립/반전 흡수),
+    그리드는 유동 배치(가용폭 랩핑, VCAP 뷰어도 통일).
+  - **다음 세션**: ① `TextureFilterCallback` 개선 — gfx 와 원활히 맞물리려면 `texture_id`
+    를 `u64_t` 로 바꾸거나(콜백 계약 4곳: lbx-gui `ImageViewerState`·lbx-intf
+    `LBX_CAL_UI_TARGET`·cal_ui·svmdemo), 아예 gfx 연동해 GFX_TEXTURE_2D 핸들을 계약으로.
+    ② 캘 영상으로 Ox4 실검증(스트립 슬라이스 표시 육안 확인 포함).
+    ③ cal 모듈 USB 핫로드(검색 경로 지정 — cfg `cal.module_dir` 또는 UI 입력).
+
+- **(2026-06-26 오후): tptopview Step 2 핵심 완성 — FBO 를 동적그림자 메시 채움 소스로 (커밋 `57e1a11`+`4ab9e3a`)**.
   - FBO 합성 모드 3종(Off / Mix[fbo.a 무시] / Overlay[fbo.a로 빈영역 Laplacian]), shadow
     color 최종 곱(FBO 도 회색 그림자 따라 어두워짐), flat 투영면 구멍 `shadow_bounds` 자동매칭
     (+margin), FBO 핑퐁 2벌 디버그(ImGui).
