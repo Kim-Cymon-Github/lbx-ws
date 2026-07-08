@@ -269,6 +269,53 @@
     2. `LBX_REFLECT` 배열/핸들러·`char[N]`/`const char*` 문자열 멤버 확장(코어는 배열 지원).
     3. RTTI 1.0(`LBX_REFL_*`) 사용 6파일 2.0 이주 → 1.0 코드 전부 제거.
 
+## lbx-intf — 모듈 인터페이스 계약 (활발)
+
+- **var 전달 borrow→move 전면 전환 (2026-07-07)**: 모듈 인터페이스에서 var 를
+  `const var_t *`(borrow) 로 넘기던 것을 `var_t`(value=move) 로 전환. avio(1.0)에서
+  실험한 패턴을 `.lit` 순서대로 전 모듈에 적용하고, 모듈마다 빌드→배포(push) 를
+  인터리브해 하위가 새 헤더를 pull 받게 진행. 콜리가 소유권 인수 후 `var_drop`,
+  콜러가 계속 쓰면 `var_share`, NULL 자리는 `VAR_NULL`. 상세·함정은
+  auto-memory `var-move-interface-refactor`.
+  - **범위**: 엔트리 체인(`LbxModuleInterfaceEntryFunc.arguments`,
+    `LBX_MODULE_INTERFACE_Open/Close.options`)까지 move 통일 + 도메인 vtable
+    (Open/Do/Run/opt/params 등) 전부. 저장 필드 중 `LBX_CAL_UI_TARGET.params`
+    (호스트 소유 per-frame view)·container `Load`·레거시 팩토리는 borrow 유지.
+  - **버전 범프**: major 0 → **1.0.0.0**(PLDR/UIDR/UIMD/CALM/APDR/PLAY). 이미
+    major 1 인 **AVIO 만 1.0→1.1**. (`0x01000000` 은 minor 1 이라 APDR/PLAY 도 major 0 였음.)
+  - **호환 가드 강화**: 각 인터페이스 `*_IsCompatible` 신설/강화 — 이제 major 뿐 아니라
+    **minor 까지** 일치해야 호환. 각 모듈 entry 가 로드 시 호출해 불일치 거부.
+  - **배포 완료**: lbx-intf `0.2.59 b670` → lbx-gui `0.1.29 b540` → avio-file `0.1.48 b231`
+    → avio-v4l2 `0.1.3 b7` → plat-glfb `0.1.6 b11` → plat-glwl `0.1.0 b7`
+    → plat-glwin `0.1.31 b127` → cal-flood `0.1.0 b7` → lbsvm-core `0.1.5 b2328`
+    → eyel2sdk `0.1.0 b9`(release gate green). lbx-core/cal/geo/gfx/gl 은 인터페이스
+    미사용이라 변경·빌드 없음.
+  - **함정(호출부 이관 시)**: ① `NULL` 은 `var_t` 로 변환 안 됨 → 전부 `VAR_NULL`.
+    ② `Var`/`lbx::var` 는 `var_t` 를 public 상속(IS-A)이라 값 자리에 넘기면 refcount 없이
+    슬라이스 → 콜리 drop + 소멸자 drop = 이중해제 → `var_share` 필수(CreateContext/Run 다수).
+    ③ 직접 `intf.entry(&intf, mrQuery, NULL)` 호출도 `VAR_NULL`.
+    ④ CAL `Run` 의 `panel` 은 `params` 내부 포인터라 params 는 사용 완료 후 drop.
+  - **다음**: 작업 중 발견한 죽은 코드 일괄 제거 — [dead-code.md](dead-code.md).
+
+- **인터페이스 0.3 재설계 — GFX 서비스 번들 + cal 세션 SSOT (2026-07-08)**: 첫 재릴리스 전
+  클린 브레이크(구 릴리스 소비처 동결 확인). 상세는 auto-memory `intf-03-gfx-services-redesign`.
+  - **`LBX_GFX_SERVICES` 신설**(`lbx_intf_gfx.h`, 구 `lbx_intf_ext_image.h` 흡수·삭제):
+    flat 번들 — ctx + ImportImage/UpdateImage/DestroyImage + **SetTexFilter**. `LBX_HOST_API.gfx`
+    (0.3)로 노출. 생산자 = lbx-gfx `gfx_host_services()`(태그 u64) / lbx-gl `lbx_gl_host_services()`
+    (부호 규약, eyel2sdk 예제용). 중첩 구조체 대신 풀어 합침(독립 인스턴스/버전주기/다중 부모
+    아님). "TextureFilterCallback u64/gfx 계약화" 백로그가 이 설계로 해소.
+  - **cal 계약 0.3**: `LBX_CAL_TARGET`{cams, cam_count, params}로 Run/RenderUI 인자 통합.
+    params 는 move 에서 **세션 문서 차용(`var_t*`)** 으로 환원 — 전 호출자가 var_share 의식만
+    치르던 실사용 증거. **SHARED-STATE RULES** 명문화: 문서=SSOT(양쪽이 읽고 씀), 변경 감지는
+    포인터가 아닌 내용, 카메라 pos/lens 변경 시 모듈이 파생캐시 자가 갱신.
+  - **버전 규율 통일**: 전 인터페이스 major+minor 일치(HOST_API IsCompatible 도 강화, cal entry
+    의 정확일치 검사 제거). append 관용 폐기 — 락스텝 재배포가 규율.
+  - **mrQuery "params" 명세**: 모듈이 필수/옵션 파라미터 스키마(type/unit/required/default/
+    choices/desc)를 자기서술 — 헤드리스 호스트가 Run 전에 인지. 결과 doc "missing" 계약.
+  - **배포(락스텝)**: lbx-intf `b673` → lbx-gfx `0.1.2 b220` → lbx-gl `0.1.70 b421` → lbx-gui
+    `0.1.29 b543`(뷰어 콜백 user_data) → avio-file `b233`/avio-v4l2 `b9` → cal-flood `b16`
+    → lbsvm-core `b2340` → eyel2sdk `b14`(gate green).
+
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
 
 - **진행**: Shadow/Poly/Geo 리팩토링(이름 변경보다 의존 방향 정리·중복 제거 우선,
@@ -276,6 +323,58 @@
 - **다음**: 동적 그림자 RADIAL_LOD 메시를 `GFX_MESH` 로 이주(위 lbx-gfx 동적 스트림
   숙제와 맞물린다). 차량 모델 렌더링은 lbx-gfx 가 Phong+큐브맵을 갖추면 그쪽으로 흡수.
 - 설계: `lbsvm-core/CLAUDE.md`, `lbsvm-core/doc/`.
+
+- **최근 (2026-07-08): 초기 cal 붕괴 회귀 픽스 + cal SSOT 반영 + 기본 8캠(개별 8장치, S3000ABR 기준) + 런타임 설정 README 문서화.** `b2340` 까지 배포.
+  - **초기 cal 붕괴 회귀**(전 카메라 파라미터 엉망): `cam_input_order` 의 **이중 사용**이 원인 —
+    LoadV1CalFile 은 "cal 레코드→카메라" 매핑으로 쓰는데 ApplyConfig(60aa741)의 vcap 클램프가
+    기본 config(단일 vcap)에서 `[0,0,0,0]` 으로 뭉갬 → 레코드 4개가 전부 cams[0] 에 덮어써짐.
+    `cal_cam_order`(+ 프리셋 `cal_record_order`)로 분리해 픽스. 교훈: 한 배열의 캡처 배선/cal
+    레코드 매핑 이중사용 금지.
+  - **cal SSOT 반영**: CalLoadModule 성공 시 CalResetCams 즉시(런타임 현행 cal = 초기해),
+    Calibration 헤더 펼침 시 선택 모듈 자동 로드(기본 Ox4 도 최초부터 base_length 명세 UI 표출),
+    mrQuery 명세 기반 제네릭 설정 UI(`ShowCalModuleParams` — 키 하드코딩 0).
+  - **기본 = 개별 캡처 8대(S3000ABR)**: 보드 프리셋 NV12 8×1920 + `capture.devices[]` 기본값
+    (`/dev/video0..3`+`/dev/video11..14`). x86 은 avio-file 이 `mcap_cap%d` 4연접 2장을 1920 요청폭으로
+    자동 슬라이스해 동일 레이아웃 시뮬레이션. 구 4연접×2 는 `test/bin/mcap_2x4.config` 로.
+    프리셋 8엔트리 + `CAM_PRESET_CNT`(배열 크기 유도, OOB 차단) + static_assert 정합 가드.
+  - **런타임 설정 문서화**: README 에 3계층 병합(프리셋/`lbsvm.config`·`--config`/인라인 JSON)·
+    병합 규칙·capture 매핑 모델(cam_input_order+cam_area, 플립=영역 반전 인코딩)·키 레퍼런스·
+    레이아웃 예시 3종 신설.
+  - **프레임 부재 견고화**: main 바인딩 all-or-nothing → 채널별 개별(소스 일부만 있어도 가용
+    카메라 동작), Test UI 무가드 역참조 3곳 가드(VCap `vbuf[0]`/썸네일 `device_image`/상세 패널)
+    — eyel2sdk 예제에서 노출된 잠복 결함(보라 배경 무합성 + 메뉴 진입 즉사).
+  - **eyel2sdk 동기화**(`b13`~`b14`): svmdemo 최신판을 예제에 반영 — 범위는 "Test UI 전반 +
+    서브는 TpTopview 까지 + Cal 연동"(UVMap/grid 는 SDK 예제 범위 밖, dpgl 은 core 의존이라 포함).
+    main 은 vcap_n==1 특수분기 제거 수술, bin 에 mcap 에셋/cal json(base_length 판) 동기화.
+
+- **(2026-07-07): CAM_CNT 런타임화(카메라 수·vcap 매핑 설정화) + avio-file 파일드라이버 일반화. 빌드 통과·배포 완료(사용자), 8채널 실테스트는 별도 진행 예정. 재개 메모는 [`lbsvm-core/doc/HANDOFF_2026-07-08.md`](file:///L:/lbsvm-core/doc/HANDOFF_2026-07-08.md).**
+  - **동기**: `VCAP_CNT` 는 이미 `capture.count` 로 런타임화됐는데 `CAM_CNT` 는 매크로 `(4)` 로 고정
+    → 카메라 수·`cam_area`·"어느 vcap 의 어느 영역" 매핑을 설정으로 못 바꿈. 특히 "4연접 영상 2채널"
+    (Maxim 스트립 ×2)을 표현 불가. 이걸 보강(이전 항목의 "SVM 소비는 CAM_CNT=4 유지"를 대체).
+  - **CAM_CNT → `cam_count` 런타임화** (`test/src/svmdemo_config.h`·`svmdemo_core.*`·`svmdemo_main.cpp`·
+    `svmdemo_ui.cpp`): `CAM_MAX(8)`(배열 상한)+`CAM_CNT_DEFAULT(4)`+`capture.cam_count`(런타임, 1..CAM_MAX).
+    `cams[]`/`cal_cams[]`/`cam_input_order[]`/`cal_pushed·bak[]` 를 CAM_MAX 로, 루프는 `cam_count` 로.
+    SVM 투영(bowl)은 `CreateProjSurfaces` 가 count≥4 요구라 앞 4대 제약 유지 — 잉여 카메라(5..8)는
+    뷰어 전용("camN" id 자동). cal(`CalRun`/`RenderUI`)도 `cam_count` 전달, CAL_IDS 는 앞4=rear/front/
+    left/right, 그 이상 "camN".
+  - **카메라↔캡처 매핑 정리**: 각 카메라 i 는 `cam_input_order[i]`(읽을 vcap 채널) + `cams[i].area`
+    (그 영상의 정규화 영역)로 입력 특정. `ApplyConfig` 에서 `cam_input_order` 를 `[0,vcap_count-1]` 로
+    **클램프** → `vcap_count==1` 이면 전부 0 으로 수렴. 덕분에 `svmdemo_main.cpp` 의
+    `vcap_n==1 && CAM_CNT>1` **특수분기 2곳 제거**, 단일 대형영상·다채널을 한 경로
+    (`vbuf[cam_input_order[i]]`)로 통일. UI "Visible Area" 에 **Source VCAP** 슬라이더 추가(런타임 편집).
+    "4연접 2채널" = `cam_input_order=[0,0,0,0,1,1,1,1]`+영역 1/4씩, 또는 `count=2`+`cam_area` 통짜.
+  - **avio-file 파일드라이버 일반화** (`drv/avio-file/src/avio_file_main.cpp`): 시뮬레이션 드라이버의
+    본질 = "소스가 분리/연접이든 소비자 요청대로 조립"인데 "가로 4연접"에 하드코딩돼 있던 것을 일반화.
+    - **모델**: 소스 파일들의 가상 연접 → 호스트가 연 각 디바이스 v 에게 폭 W(요청 fmt) 창
+      `[v·W,(v+1)·W)` 를 준다. 파일 폭 F 대 W 로 — `F==W` 통짜 1채널(하위분할은 `cam_area` 몫),
+      `F>W`(정수배) `F/W` 슬라이스(`h_to_v` 채널연속화). `Σ파일폭 = vcap_count×W` 정합.
+    - **제거**: `VIN_CH=4` 하드코딩·단일 전역 `capman`·`video_no` 고정슬라이스·죽은 `get_texture`·
+      open 의 `VIN_W` 해상도추정 heuristic. **신규** `TCapFileMan`(소스별 버퍼 + `EnsureFrame(template,W,H)`
+      캐시 + `ChannelData(video_no)`). `%d` 는 0.. 존재 파일까지 개별 로드(없으면 단일).
+    - 결과: wide1장→4채널 / wide2장→8채널 / wide1장 통짜(cam_area) / 개별8장 → **한 경로로 균일**.
+      물리 파일간 concat·진짜 픽셀포맷 변환은 **미래 ffmpeg/gst 미디어 드라이버**로 분리(백로그).
+  - **빌드**: VS2022 lbsvm-core 전 솔루션 + `drv/avio-file` Debug 오류 0. 배포(lib/lbx 서브모듈)는
+    사용자가 완료. **8채널 실테스트 미완**(육안·실config 필요).
 
 - **최근 (2026-07-07): svmdemo cal 모듈(cal-ox4/hkmc) 연동 완성 — Auto/Manual Cal + 실시간 연동 + 3계층 런타임 설정. 하루 6커밋(`e6170d6`→`eada20f`), 계획/진행 정본은 [`lbsvm-core/doc/Cal_Module_Integration_Plan.md`](file:///L:/lbsvm-core/doc/Cal_Module_Integration_Plan.md).**
   - **Step 0 — svmdemo 양측 동기화**: Test UI 는 eyel2sdk 최신(Camera Parameters 편집기
@@ -400,6 +499,21 @@
 - cal 을 런타임 DLL 모듈로 분리. 설계 source of truth:
   `cal/cal-flood/doc/Cal_Module_Plugin_Design.md`.
 
+- **최근 (2026-07-08): 계약 0.3 적응 + 헤드리스 Ox4 성립 + SSOT + 전환 크래시 픽스.** `b16` 배포.
+  - **base_length 유도를 Run 경로로**: UI 전용 TU 에 갇혀 있던 앵커 유도를 알고리즘 TU
+    (`cal_ox4.h/cpp`)로 이관 — 헤드리스 호스트가 `params["base_length"]` 주입만으로 AutoCal 완주.
+    앵커 우선순위: 패널 anchors → params anchors(구형식) → `desc->resolve_anchors` 유도(필수 키
+    누락 시 "missing" 보고 + 캘 스킵). **cal-ox4.json 을 유도 결과(anchors) 대신 유도 입력
+    (base_length=1000/veh_length=5155)으로 전환 — 실영상 autorun score 소수 7자리 동치로 회귀 증명.**
+  - **SSOT**: cal_ox4_ui 정적 사본 전면 제거(params 디렉트 바인딩 — 호스트 제네릭 UI 와 같은 키라
+    구조적으로 항상 일치), cal_ui 재로드를 포인터 동일성 → 앵커 내용 지문으로, 카메라 pos/lens
+    스냅샷 비교 → LBX_CAMERA_Update 자가 갱신.
+  - **전환 크래시 3중 픽스**: 전환 프레임의 device_image NULL 공백 중 스냅샷 latch → 파생캐시
+    영영 미갱신 → 쓰레기 투영 → PCM OOB 사망. ①latch 금지 ②Run 이 calibrate 직전 Update 자체
+    보장 ③PCM 샘플 경계 가드(OOB=ctNotCorner 탈락). 재현은 `CAL_HOST_TEST_SWITCH` env 훅.
+  - **cal-host 하니스**: 모듈 적용 시 기본 .cal 자동 로드, svmdemo 의 Camera Parameters 섹션 이식
+    (LBX_CAMERA C API, VCap 설정 제외), mrQuery 명세 제네릭 설정 UI, 중복 채널 뷰어 삭제.
+
 ## eyeL-2100R — 구형 레포 포팅 (별건)
 
 - **최근 (2026-07-01): CAN 연동 완성 — 휠펄스 오도메트리 이식 + 실차 기어 ID 픽스. 화면검증 완료, 차량테스트 대기.**
@@ -452,3 +566,29 @@
 - `likit` 의 모놀리식 `lit.py` 를 기능별 독립 도구(`lit-build`/`lit-deploy`/
   `lit-version`/`lit-update`/`lit-commit` ...)로 분해해 재구현 중. `likit` 는
   레거시이며 함수 추출의 출처로만 참고한다.
+
+- **최근 (2026-07-08): lit-build 미등록 프로젝트 임시 빌드 지원**. `.lit [[project]]`
+  에 없는 프로젝트도 이름(basename)으로 빌드 가능 — 경로로 매치 안 되면 루트 아래를
+  제한 깊이(4)로 검색해 빌드 레이아웃 가진 동명 디렉토리를 찾아, `.lit` 의
+  `[msbuild]`/`[linux]` 환경 정보를 그대로 써서 임시 컴파일한다. 미등록(one-off)
+  대상은 배포와 "변경 없음 스킵"을 끄고 항상 컴파일하되 **버전 bump 는 유지**
+  (version 파일 있으면 올림). `lit-build ltc` 로 검증. (`lit-build.py`/`.md`)
+
+
+## ltc — Litbig Terminal Controller (진행)
+
+UDP/UDS 소켓으로 명령을 주고받는 터미널 컨트롤러. 임베디드 앱의 clink 엔지니어링
+메뉴 입력 등에 쓴다. `tool/ltc` 독립 레포(`litbig-git/ltc`).
+
+- **최근 (2026-07-08): 플랫폼별 빌드 정비 + 버전 임베드 + 기본 도메인 정리 (커밋 `8cae9a8`)**.
+  - **기본 도메인**: 비-Windows 는 `AF_UNIX`(UDS) 기본으로 (Windows 는 `AF_INET` 유지).
+    recv 루프도 `AF_UNIX` 처리 추가. 런타임 `>domain inet|unix` 전환은 그대로.
+  - **Makefile**: lbx-core 방식으로 재구성 — 중간 산출물을 `build/linux/$(PLATFORM_ID)/`
+    로 격리(arch 교차 빌드 시 `.o` 안 섞임), `vpath`+패턴룰+`-MMD -MP` 헤더 의존성 추적,
+    실행파일은 `bin/$(PLATFORM_ID)/` 에 `$ORIGIN` rpath 로 배치, x64 는 lbx-core(ASan)
+    와 링크 호환 위해 ASan 계측.
+  - **버전 파일/rc**: `src/version.txt`(숫자) + 배포된 `lbx_version.h` 로 lbx-core 와
+    동일한 단일 원천 버전 임베드. Linux 산출물에 `LBVERINFO=ltc M.m.p.b`
+    (`LBX_EMBED_VERSION_INFO()`), Windows 는 `build/vs/ltc.rc` VERSIONINFO. `.gitignore`
+    가 `build/*` 로 새 `.rc` 를 삼키던 문제도 수정(build/vs 프로젝트 소스만 추적).
+  - x64 크로스 빌드로 임베드까지 검증. 실행 방법은 [`d:/doc/embedded-run-guide.md`](file:///D:/doc/embedded-run-guide.md).
