@@ -97,6 +97,13 @@ L:\ 는 `lit` 멀티레포 워크스페이스의 **얇은 루트 레포**이자,
 - **주석**: `*.h/*.hpp`(외부용)는 **영어 + Doxygen 강제**(공개 API 계약만). `*.c/*.cpp`(내부용)는 **한국어**, Doxygen 허용 — 알고리즘 상세·설계 의도·트레이드오프까지 적어도 된다. 주석에는 이모지·유니코드 기호를 쓰지 않고 ASCII(`->`, `*`, `-`)만 쓴다(커밋 메시지·사용자 대상 텍스트는 예외).
 - **타입**: raw 기본 타입(`int`/`short`/`unsigned`/`long`, 정수용 `char`)·stdint 대신 LBX 고정폭 별칭(`i32_t`, `u32_t`, `f32_t`, `b8_t`, `var_t`, `fourcc_t`, `LBX_HANDLE`). 새로 짜기 전에 lbx-core에 이미 있는 루틴/헬퍼를 먼저 확인해 재사용한다.
   헤더는 `extern "C"` — 공개 API는 C ABI. 네이밍 `[모듈]_[동작]`, 헤더 가드 `lbx_[name]H`.
+- **lbx 편의 타입을 최대한 살려 쓴다**: 문자열은 `ustr_t`/`UString`, 변형값은 `var_t`/`lbx::var`.
+  수동 `char[]`+`sprintf`·수동 refcount 대신 `UString`(RAII·`printf`/`sprintf`·`c_str`)과 `lbx::var`의
+  brace-init(객체/배열 생성)·`Key(i)`/`Value(i)`(멤버 순회 — 조회에 `[]` 지양)·`str()`(임의 스칼라→
+  `UString`)·`var_to_ustr` 등을 쓴다. 소유권은 **값 반환=move**(`Detach()`), 공동소유만 `Share()`.
+  `Var`/`VarRef`/`Variant`는 폐기 예정이니 새 코드는 `lbx::var`. **없어서 아쉬운 기능(메서드·헬퍼)이
+  있으면 워크어라운드로 때우지 말고 반드시 사용자에게 제안한다 — lbx는 전부 사용자 코드라 얼마든지
+  추가할 수 있다.**
 - **커밋 메시지**: 한국어, Conventional Commits 접두사(`feat:`, `fix(build):` 등 — 각 레포 최근 이력에 맞춤).
 
 ## 작업 방식 원칙 (lbsvm-core 지침에서 일반화)

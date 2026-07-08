@@ -43,7 +43,7 @@ env_script  = "/mnt/temp/toolchain/d5-adt/environment-setup-cortexa55-telechips-
 [[linux.env]]
 name = "rk3576"
 platform_id = "a53-aarch64-rk3576"
-env_script  = "/mnt/share/toolchain/rk3576-eyel-s3000abr/environment-setup"
+env_script  = "/mnt/share/toolchain/rk3576-eyel-s3000abr-vulkan/environment-setup"
 
 
 # ============================================
@@ -102,7 +102,6 @@ path = "cal/cal-flood"
 
 [[project]]
 path = "lbsvm-core"
-skip = ["rk3568"]
 
 [[project]]
 path = "eyel2sdk"
