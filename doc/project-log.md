@@ -574,6 +574,30 @@
   대상은 배포와 "변경 없음 스킵"을 끄고 항상 컴파일하되 **버전 bump 는 유지**
   (version 파일 있으면 올림). `lit-build ltc` 로 검증. (`lit-build.py`/`.md`)
 
+- **최근 (2026-07-08): lit-ship 릴리스 경로 첫 실전 검증 — 전 15모듈 minor 릴리스 완료**.
+  lbx-core **v2.2.0** / lbx-intf **v0.3.0** / 나머지 13모듈 **v0.2.0**
+  (plat-glwl·cal-flood 는 첫 릴리스). 번들 태그 **lib/lbx v2.2.0 · lib/lbsvm v0.2.0**
+  (lit-bundle 매니페스트 annotation, 수동 생성).
+  - **검증된 절차**: ① minor bump 예측(minor+1, patch/build=0) → ② 모듈별
+    RELEASE-NOTES.md 에 `## MODULE vX.Y.0 (날짜)` 큐레이션 섹션 선작성(diff 정독 기반)
+    + 선커밋 → ③ `lit-build --release --minor --force-build --pick auto --json` 일괄
+    (19분) → ④ 실패 모듈은 `--release --no-bump` 재실행. 큐레이션 섹션이 있으면
+    lit-deploy -r 이 LLM 없이 그 본문을 서브모듈/메인/태그 메시지에 사용 — 배포 저장소
+    사용자에게 개선사항이 그대로 전달됨(하이브리드 경로 설계 의도대로 작동).
+  - **사고 1건**: eyel2sdk 의 스테일 `index.lock`(sweep 이전부터 존재)으로 lib/lbsvm
+    pull 이 WARN 으로 넘어가 **낡은 lbsvm(0.1.5)으로 gate 빌드·태그** → 번들
+    all-or-nothing 가드가 검출(0.1.5≠0.2.0). lock 제거 → v0.2.0 태그 삭제·재릴리스로 복구.
+  - **도구 개선 백로그(내일)**: ① 릴리스 모드에선 서브모듈 pull 실패 fatal + 스테일
+    lock 감지 ② Generated-by 오표기(큐레이션인데 `qwen3.5:9b`) — curated/외부 작성자
+    표기 ③ Dependencies 에 자기 배포 대상이 `-dirty` 로 기록 ④ 서브모듈 commit 실패에도
+    `LIT_JSON ok:true` ⑤ 부분 재실행용 "번들 태그만" 모드 ⑥ lib/lbx 의 lbx-vk.dll
+    VERSIONINFO 없음(스테일 산출물) 정리 ⑦ lit-ship 스킬에 릴리스 절차 섹션 추가
+    ⑧ 번들-gate 연동 태깅 방침 결정(아래).
+  - **번들 버전 방침(논의 중)**: 현재는 `.lit [release] version_from` 대로 대표 모듈
+    dll 버전을 번들 태그로 사용(lbx=2.2.0, lbsvm=0.2.0). eyel2sdk 릴리스와의 연동은
+    eyel2sdk 태그의 서브모듈 SHA 고정 + 번들 태그 매니페스트로 이미 추적 가능.
+    gate 버전 일치 태깅이 필요하면 별도 alias 태그(`eyel2sdk-v0.2.0`) 추가가 절충안.
+
 
 ## ltc — Litbig Terminal Controller (진행)
 
