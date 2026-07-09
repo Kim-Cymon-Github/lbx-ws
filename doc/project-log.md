@@ -597,6 +597,27 @@
     dll 버전을 번들 태그로 사용(lbx=2.2.0, lbsvm=0.2.0). eyel2sdk 릴리스와의 연동은
     eyel2sdk 태그의 서브모듈 SHA 고정 + 번들 태그 매니페스트로 이미 추적 가능.
     gate 버전 일치 태깅이 필요하면 별도 alias 태그(`eyel2sdk-v0.2.0`) 추가가 절충안.
+    → **07-09 확정**: 아래 릴리스 도구 개선 항목 참조.
+
+- **최근 (2026-07-09): 릴리스 도구 개선 — 어제 백로그 8건 완료 (WDLABD2411-579)**.
+  - **번들-gate 연동 방침 확정(⑧)**: 번들 태그는 종전대로 `version_from` 대표 모듈
+    버전(artifact=진실)을 쓰되, **gate green 빌드 직후 · gate 배포 전**에 걸도록 순서
+    변경 — gate(eyel2sdk) 릴리스 노트의 Dependencies(`git describe`)가 해시 대신
+    `v2.2.0` 같은 태그명으로 기록된다. "SDK 버전 ↔ 번들 버전" 대응을 버전 정보로
+    읽는 것이 목적(엔지니어 진입점 = eyel2sdk). 서브모듈 포인터 = 태그 대상 커밋이므로
+    별도 pin 절차 불필요. 사전 점검 실패 시 gate 릴리스도 중단(낡은 조합 봉인 방지).
+  - **lit-update**: pull 실패 시 종료코드 1(→ lit-build 가 프로젝트 중단, 낡은
+    서브모듈로 조용히 빌드되는 사고 방지) + 스테일 `index.lock`(30분+) 자동 제거·재시도(①).
+  - **lit-deploy**: 릴리스 중 서브모듈 pull/commit/push 실패 시 메인 커밋·태그 전에
+    중단(①④, ok:false 반영), 큐레이션 릴리스의 Generated-by 를
+    `curated RELEASE-NOTES.md` 로 사실대로 표기 + `--generated-by` 릴리스 지원(②),
+    Dependencies 에서 자기 배포 대상 서브모듈 제외(`-dirty` 노이즈 제거)(③).
+  - **lit-build**: `--tag-bundles`(빌드 없이 번들 태그만 — 부분 재실행 보완)(⑤).
+  - **lib/lbx 정리(⑥)**: 폐기된 lbx-vk 스테일 산출물(dll/lib/헤더) 제거(`dd04fd2a`) —
+    lit-bundle 매니페스트 경고 해소. lbx-gl 은 구형 코드가 남아 있어 유지
+    (lbx-vk/lbx-gl → lbx-gfxvk/lbx-gfxgl 대체가 최종 수순).
+  - **lit-ship 스킬(⑦)**: 검증된 릴리스 절차(노트 큐레이션 선작성→선커밋→sweep→복구)를
+    스킬 문서에 명문화. 도구 .md 3종(build/deploy/update)도 갱신.
 
 
 ## ltc — Litbig Terminal Controller (진행)
