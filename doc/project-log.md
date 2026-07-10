@@ -318,6 +318,27 @@
 
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
 
+- **최근 (2026-07-10): RK3576 투영면 전멸 미스터리 해결 — 스테일 셰이더 바이너리 캐시 (WDLABD2411-578).**
+  BSP 교체(libmali wayland-gbm → vulkan-wayland-gbm) 후 svmdemo 의 3D/탑뷰 투영면만
+  전멸 + 차를 관통하는 랜덤 검정 삼각형. 차모델/PNG/ImGui/SingleView/TP 는 전부 정상.
+  - **원인**: 투영면 cam 프로그램만 유일하게 `cam_prog.cache`(glProgramBinary)에서 로드하는데,
+    프로그램 바이너리는 드라이버 빌드 종속이라 BSP 교체로 무효. 비호환 바이너리는 **GL 에러
+    없이 GL_LINK_STATUS=FALSE 로만** 나타나는데(스펙 의도) lbx-gl `LoadBinary` 가 glGetError
+    만 봐서 "성공" 통과 → 링크 안 된 껍데기 프로그램이 전 뷰 배정 → 릴리스 빌드라 GL_CHECK
+    무력 → glUseProgram 조용히 실패 → **직전 바인딩된 남의 프로그램으로 투영면이 그려짐**
+    (탑뷰=TP 블릿 uProjection=identity → 전부 클립, 3D=그림자 프로그램 → 퇴화 삼각형).
+  - **진단 과정**(원격 자율 루프: adb + weston `--debug` 스크린샷 + 계측 빌드): depth/cull
+    끄기 → 기각, 단색 강제 → 기각(래스터 자체가 안 됨), draw 직전 GPU 리드백(uProjection
+    glGetUniformfv/GL_CURRENT_PROGRAM/attrib 상태)으로 "뷰 프로그램 h=9 인데 바인딩은 21/30"
+    모순 포착, 행렬 수학은 보드 단위테스트로 무죄 증명 → PrepareRendering 의 캐시 로드 발견.
+  - **픽스**: lbx-gl `f48feb8` — `TGLProgram::LoadBinary` + `stream_read_glprogram` 에
+    GL_LINK_STATUS 검사(+에러 잔재 배수, 읽기 버퍼 누수 수리). 실패 시 0 반환 → svmdemo 가
+    소스 리빌드 → SaveToFile 캐시 자동 갱신. 보드에서 스테일 캐시 복원 실검증(0.05s 검출 →
+    리빌드 → 정상 렌더링). **lib/lbx 체인 배포는 미실시**(다음 lit-ship 때 포함).
+  - **주의**: lbx-gui `IMGUI_LOAD_SHADER_CACHE` 빌드는 컴파일 폴백이 없어 스테일 캐시 =
+    복구 불능(현재 Makefile 에선 꺼져 있음). 켜서 출하하는 제품은 드라이버 업데이트 시 캐시
+    재생성 절차 필수. 상세는 auto-memory `gl-program-binary-cache-gotcha`.
+
 - **진행**: Shadow/Poly/Geo 리팩토링(이름 변경보다 의존 방향 정리·중복 제거 우선,
   mesh 경계 선정리). working 브랜치는 `feature/shadow-upgrade`.
 - **다음**: 동적 그림자 RADIAL_LOD 메시를 `GFX_MESH` 로 이주(위 lbx-gfx 동적 스트림
