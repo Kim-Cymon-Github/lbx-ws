@@ -98,6 +98,13 @@ skip = ["tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-
 path = "drv/plat-glwin"
 
 [[project]]
+path = "drv/plat-vkwin"
+
+[[project]]
+path = "drv/plat-vkwl"
+skip = ["tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
+
+[[project]]
 path = "cal/cal-flood"
 
 [[project]]
