@@ -510,6 +510,31 @@
 - **진행**: `lbx_rect` 를 `lbx_proj`(투영) + `lbx_poly`(폴리곤 생성)로 파일 분리.
   `rrect_* -> rect_*` API 통합은 완료.
 
+## drv/avio-play — DVRS 세션 재생 드라이버 (신규, 활발)
+
+- **(2026-07-15) 저장소 생성 + P3 1~3단계 완료 — PC 에서 8ch 세션 실시간 재생 동작.**
+  avio-file 을 castproj 로 캐스팅해 독립 레포 생성(castproj 가 .git 없이 워크스페이스에
+  강제 스테이징하는 버그 발견 — 수동 복구, 수정 태스크 칩 등록). 설계는
+  `lbsvm-core/doc/Recording_Replay_System_Design.md` §8 이 진실.
+  - **세션 리더**(`ef7bdfa`): states.bin 파서 + 경량 MKV demux(EBML 직독, 오픈 시
+    블록 인덱스 스캔 — video[] UNINDEXED 라도 PC 인덱서 불요) + tick↔블록 ts
+    반프레임 매칭. 보드 실녹화(E:\rec)로 ffprobe 대조 검증. `--dump` 갭 리포트로
+    미매칭의 정체 판독(시작 버스트/꼬리 + ch1 6.4s 실드롭 4장 — 컨테이너 무관,
+    SD 쓰기 스톨 정황).
+  - **디코더**(`86717ae`): play_dec vtable 심 + libavcodec 백엔드(FFMPEG_SDK
+    프리빌트 lgpl-shared, avcodec+avutil+swscale). 실세션 40프레임 ffmpeg 레퍼런스
+    **비트 일치** (함정: ffmpeg CLI 기본 vsync 가 중복 pts 드롭 — `-fps_mode
+    passthrough` 필수. avcodec thread_count 기본 1 → 0 필수).
+  - **재생 코어+드라이버 재배선**(`ac46456`+`b6a51a3`): 클럭(실시간×배속)+seek
+    (앞뒤 키프레임 점프)+메시지 to_host 재주입(sender='PLAY')+출력 어댑터
+    (요청 포맷 계약 — NV12 보드 동일 레이아웃/BGRA, swscale 1단 직행+보드 폴백).
+    play.caps/open/pause/rate/seek/status 동사. 실측 238프레임/ch/9s(Debug≈89%).
+- **다음**: ① lbx-gfx CPU NV12 수용(ImportImage 불변 — Y+UV 2텍스처+GPU 변환패스
+  →RGBA, §8.5 계약 확정) → 배포 → ② svmdemo 통합(to_host 콜백=SendToSVM 배선,
+  vstate 프라이밍 입구=미결#5) → ③ Release 성능·합성 창 모델·Linux 빌드·MPP 백엔드.
+  원격 저장소 미생성·.lit 미등록(빌드 검증 후). 녹화측 백로그: 시작 버스트 스킵,
+  드롭 카운터 session.json 저장.
+
 ## drv/plat-glwl — Wayland 플랫폼 드라이버 (예정/진행)
 
 - `glwin`(Win32) 정리 -> `glwl`(`glfb` clone 기반 Wayland) 순서. EGL 등 컨텍스트
