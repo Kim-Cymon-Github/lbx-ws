@@ -535,6 +535,29 @@
   원격 저장소 미생성·.lit 미등록(빌드 검증 후). 녹화측 백로그: 시작 버스트 스킵,
   드롭 카운터 session.json 저장.
 
+## tool/limu — BMI088 직접 제어 프로토타입 리더 (신규)
+
+- **(2026-07-22) 저장소 생성 + 보드 실측 완료 — IMU 직접 제어 경로 검증 끝.**
+  WDLABD2411-592 이동량 추정기(IMU 주 + 영상 국소 보정)의 1단계. BSP input 센서
+  프레임워크(gsensor/gyro_bmi088) unbind 후 `/dev/i2c-6` 직접 제어가 확정 경로라서,
+  softreset부터 전체 재초기화(accel `ACC_PWR_CTRL=0x04` 재설정 함정 포함) + FIFO
+  스트림 드레인 + sensortime 앵커링을 실측하는 단독 C 유틸(libc only, lbx 무의존).
+  - **설정 확정치**: accel 1600Hz OSR4 ±6g / gyro 1000Hz BW116 ±250°/s / 온도 1Hz.
+  - **보드 실측(30s, 10ms 드레인)**: 오버플로/오버런 0. accel 실효 ODR
+    **1599.998Hz(sensortime 기준)**, host↔sensortime 드리프트 **-11,106ppm(≈1.1%,
+    chip 빠름)** → 적분 dt 는 sensortime+host 회귀 보정 필수 입증. gyro 는 host 기준
+    999.8Hz(≈-180ppm). I2C 버스트: accel 평균 3.6ms/149B, gyro 1.5ms/60B(400kHz,
+    드레인당 버스duty ~50%). 웨이크 지연 최대 11ms 도 FIFO 심도(accel 91ms/gyro
+    99ms)로 흡수. 데이터 타당성: |acc|=988mg≈1g, gyro 바이어스 ≤0.21°/s(스펙 내).
+  - **함정 2개 실측 발견**: ① gyro softreset(0x14<-0xB6)은 실행되지만 ACK 전에
+    인터페이스가 리셋돼 NACK(ENXIO)로 보임 — 쓰기 실패 무시+사후 검증으로 처리.
+    ② stream 모드에선 버스트 리드 중에도 프레임이 쌓여 fill+4B 오버리드로는 FIFO 가
+    안 비어 sensortime 프레임이 안 나옴 — 9프레임분 마진 오버리드 필요.
+- **다음**: ① svmdemo GSEN 인제스트(리더 스레드 + `LBX_GSEN_PACKET` + ProcessMsgs
+  tick case) ② 수집 세션 몇 개 확보 → PC avio-play 재생으로 추정기 개발 착수.
+  향후 필요 시 INT3/INT4 가 SoC GPIO 에 배선돼 있어 data-ready 인터럽트 타임스탬핑
+  으로 상향 여지. dts `status="disabled"` 는 경로 확정 후.
+
 ## drv/plat-glwl — Wayland 플랫폼 드라이버 (예정/진행)
 
 - `glwin`(Win32) 정리 -> `glwl`(`glfb` clone 기반 Wayland) 순서. EGL 등 컨텍스트
