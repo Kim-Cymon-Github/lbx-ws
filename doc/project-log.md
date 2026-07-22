@@ -318,7 +318,21 @@
 
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
 
-- **최근 (2026-07-10): RK3576 투영면 전멸 미스터리 해결 — 스테일 셰이더 바이너리 캐시 (WDLABD2411-578).**
+- **최근 (2026-07-22): GSEN(IMU) 인제스트 완료 + IO 디바이스 모듈 경계 방침 확정 (`da7efad`/`85be1eb`).**
+  tool/limu 검증 시퀀스를 svmdemo 에 연결 — `test/src/gsen/`(디바이스층+글루),
+  전용 MSG_POOL(2KB×32), 리더 스레드 10ms 드레인(i2c 버스트 ~5ms 블로킹이라 메인
+  루프 폴링 불가), ProcessMsgs GSEN 케이스(DVRS tick + gsen_stat 관측).
+  - **보드 실측**: 8ch 1080p 녹화 동시 66초 세션에 GSEN 6,593배치/acc 106,671샘플,
+    스킵 0·오버런 0, sensortime 6593/6593, 실효 1600.26Hz(limu 와 일치). 파싱 전수 정합.
+  - **경계 방침**(doc/IO_Device_Module_Boundary.md): 모듈 경계 = 메시지
+    (Open/Close/Do/to_host/Send). read/write 4동사는 모듈 내부 transport 계층이
+    제자리. 글루 파일(svmdemo_gsen/svmdemo_mcucan)이 장래 DLL 드라이버 진입점,
+    패킷 계약(GSEN_PACKET 등)의 lbx-intf 승격은 분리 시점에.
+  - **열린 것**: 종료 munmap_chunk 1회 관찰(gsen+rec 동시에서만, 5회 재현 실패,
+    세션 무결 — 티어다운 단계). 태스크 칩 등록. 다음 = 수집 세션 확보 → PC 재생
+    기반 추정기 오프라인 개발(IMU 문서 §4.2).
+
+- **(2026-07-10): RK3576 투영면 전멸 미스터리 해결 — 스테일 셰이더 바이너리 캐시 (WDLABD2411-578).**
   BSP 교체(libmali wayland-gbm → vulkan-wayland-gbm) 후 svmdemo 의 3D/탑뷰 투영면만
   전멸 + 차를 관통하는 랜덤 검정 삼각형. 차모델/PNG/ImGui/SingleView/TP 는 전부 정상.
   - **원인**: 투영면 cam 프로그램만 유일하게 `cam_prog.cache`(glProgramBinary)에서 로드하는데,
@@ -553,8 +567,8 @@
     인터페이스가 리셋돼 NACK(ENXIO)로 보임 — 쓰기 실패 무시+사후 검증으로 처리.
     ② stream 모드에선 버스트 리드 중에도 프레임이 쌓여 fill+4B 오버리드로는 FIFO 가
     안 비어 sensortime 프레임이 안 나옴 — 9프레임분 마진 오버리드 필요.
-- **다음**: ① svmdemo GSEN 인제스트(리더 스레드 + `LBX_GSEN_PACKET` + ProcessMsgs
-  tick case) ② 수집 세션 몇 개 확보 → PC avio-play 재생으로 추정기 개발 착수.
+- **(2026-07-22 당일 후속)**: svmdemo GSEN 인제스트 완료 — lbsvm-core 섹션 참조.
+- **다음**: 수집 세션 몇 개 확보 → PC avio-play 재생으로 추정기 개발 착수.
   향후 필요 시 INT3/INT4 가 SoC GPIO 에 배선돼 있어 data-ready 인터럽트 타임스탬핑
   으로 상향 여지. dts `status="disabled"` 는 경로 확정 후.
 
