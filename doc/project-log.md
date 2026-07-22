@@ -332,6 +332,24 @@
     세션 무결 — 티어다운 단계). 태스크 칩 등록. 다음 = 수집 세션 확보 → PC 재생
     기반 추정기 오프라인 개발(IMU 문서 §4.2).
 
+- **(2026-07-22 후반) 재생 표시 경로 정비 — 그림자 소실 픽스 + camview(gfx) + NV12 통일.**
+  - **그림자 전체 소실 픽스**(`1bb5ad3`): 그림자 컬러 샘플러가 I420 을 몰라
+    PC 재생(I420)에서 전 카메라 skip → memset 픽스와 겹쳐 전부 투명. I420/YV12
+    로컬 샘플러 추가(lbx-core 승격 후보). "그림자가 통째로 안 보이면 포맷 스위치
+    default 낙하부터 의심".
+  - **vehicle.virtual_pulse 노브**(`c9d979d`): 책상 세션엔 CAN 이 없어 재생 중
+    displacement=0 → TP 정지가 정상 동작 — 가상 펄스를 config 로 켜 재생에서
+    TP 구동. drivers.gsen 보드 기본 "6"(상시 인입).
+  - **camview**(`453a565`+`2011ae3`): 배경 삼각형+카메라 타일의 test_render(수제
+    GLES2)를 cal-flood cal_host_render 이식본(gfx 직결, GL 의존 0 — 체커도
+    gfx_texture_2d_from_pixels)으로 대체. display.cam_tiles(기본 off)로 통째
+    게이트 — 4K 부하 제거. 타일 0/1 TP FBO 디버그 치환은 원복(전 채널 정상 표시),
+    스트립은 하단 앵커(cal_host 원본과 의도적 차이). 원본 cal-flood 쪽 GL 잔재도
+    동일 정리(`d606a4b`) — 양쪽 수동 동기화 관계.
+  - **재생 NV12 통일**: gfx 0.2.1 CPU YUV ImportImage(이미 배포됨)로
+    play_dvrs.config 요청 포맷을 보드 표준 NV12 로 전환. PC 시각 검증 완료.
+    보드 재생(MPP 백엔드, 미구현)도 NV12 네이티브라 변환 0회 경로가 기본이 된다.
+
 - **(2026-07-10): RK3576 투영면 전멸 미스터리 해결 — 스테일 셰이더 바이너리 캐시 (WDLABD2411-578).**
   BSP 교체(libmali wayland-gbm → vulkan-wayland-gbm) 후 svmdemo 의 3D/탑뷰 투영면만
   전멸 + 차를 관통하는 랜덤 검정 삼각형. 차모델/PNG/ImGui/SingleView/TP 는 전부 정상.
