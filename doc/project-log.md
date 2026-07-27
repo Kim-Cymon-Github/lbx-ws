@@ -271,6 +271,39 @@
 
 ## lbx-intf — 모듈 인터페이스 계약 (활발)
 
+- **최근 (2026-07-27): DVRS 온디스크 포맷 계약 승격 + 투영 분리 (`7cc84b9`→`dfc4b4b`, 배포 0.3.1 b6).**
+  `intf/lbx_dvrs_format.h` 신설. lbx-intf 를 고른 이유는 이미 모듈 간 계약의 자리이고
+  **lbx-core 에 대응하는 lbx-ext 로 개명 예정**이라 포맷 계약의 장기 귀속지로 자연스럽다는 것.
+  - **왜 승격이 필요했나 — 비대칭 교차**: `chN.mkv` 는 드라이버↔드라이버(대칭)인데
+    `states.bin`/`messages.bin` 은 **호스트가 쓰고 드라이버가 읽는다**(교차). 드라이버는
+    독립 빌드돼야 하므로 호스트 헤더를 include 할 수 없어, 양쪽이 구조체를 손으로 복제하고
+    있었다(`lbsvm_dvrs.h` ↔ `play_format.h`, 구조체 5개+매크로 8개). 어느 쪽이 필드를
+    건드리면 **녹화물이 조용히 안 읽히는** 형태로 터진다.
+  - **지배 규칙 명문화**: 세션 디렉토리는 **기록 시점 사실만 담고 녹화가 끝나면 다시 쓰지
+    않는다(write-once)**. 알고리즘이 유도한 것(차량 상태·오도메트리·자세·검출)은 전부
+    **투영**이며 그 알고리즘 소유로 자기 작업공간에 둔다 — **원본 세션 폴더 무접촉**.
+    투영은 버리고 로그를 재생해 재구축할 수 있으므로 스키마가 자유롭다: `VEH_UNIT_STAT` 이
+    굴절차 대응으로 다유닛 `VEH_STAT` 이 되어도 이 계약은 무변이고 옛 녹화물도 쓸모 있다.
+    같은 녹화물로 알고리즘을 여러 개 돌릴 수 있는 것이 이 규칙의 배당.
+  - **레코드 v1(192B) → v2(32B)**: 192 중 **132바이트(69%)가 투영**이었다. `video[8]`(128B)
+    +`prev_idr_frame_no`(4B)는 writer 가 플레이스홀더(`~0`/UNINDEXED)만 찍고 `size` 는
+    아예 안 썼고 IDR/DROPPED 도 세운 적 없으며 reader 는 코드 사용이 0 — **끝내 만들지 않은
+    인덱서의 발자국**이고, 존재 이유("나중에 백필")가 write-once 와 충돌하므로 규칙이
+    구조적으로 제거한다. `vstate`(32B)는 소비자 소유 투영. 남은 레코드가 말하는 것은 하나:
+    "프레임 N 의 시각은 T 였고 그 프레임 메시지는 `[msg_offset, +msg_count)` 에 있다".
+  - **`record_size` 는 검사가 아니라 STRIDE**: 살아남은 필드를 v1 과 **같은 바이트 오프셋**에
+    배치(`frame_no@0 tick@4 flags@8 msg_offset@16 msg_count@24`)해서 stride 리더가 버전
+    분기 없이 v1/v2 를 함께 읽는다. 종전 리더가 `record_size` 를 동일성 검사로 쓴 것은
+    크기 진화를 허용하려 넣은 필드로 진화를 막던 셈이라, 그 규약을 헤더에 못 박았다.
+  - **신설**: `DVRS_MSG_HEADER`(packed 10B — 종전 writer fwrite 3회 / reader `hdr+0/+2/+6`
+    수동 memcpy 대체), `DVRS_CODEC_H264/H265`(muxer·디코더에 각각 박힌 리터럴), 그리고
+    투영 컨테이너 `DVRS_STATS_HEADER`(64B) — 헤더만 표준화해 도구가 어느 알고리즘의 투영이든
+    열거·검증하고, 레코드 본문은 알고리즘 정의 불투명 바이트. `src_start_tick`/`src_rtc_epoch`/
+    `src_record_count`/`src_msgs_size` 로 원본 바인딩해 재녹화·절단 시 스테일을 감지한다.
+  - 검증: C++17/C11 컴파일 + 크기·오프셋 실측. 소비측은 lbsvm-core·avio-play 항목 참조.
+    **avio-v4l2 는 범위 제외** — states/messages 를 안 쓰고 CodecID 상수만 해당되는데
+    크로스 툴체인(WSL) 빌드 검증이 필요해 다음으로.
+
 - **var 전달 borrow→move 전면 전환 (2026-07-07)**: 모듈 인터페이스에서 var 를
   `const var_t *`(borrow) 로 넘기던 것을 `var_t`(value=move) 로 전환. avio(1.0)에서
   실험한 패턴을 `.lit` 순서대로 전 모듈에 적용하고, 모듈마다 빌드→배포(push) 를
@@ -317,6 +350,41 @@
     → lbsvm-core `b2340` → eyel2sdk `b14`(gate green).
 
 ## lbsvm-core — SVM 본체 (활발, 주 작업 대상)
+
+- **최근 (2026-07-27): 데이터 취득 부채 정리 — 포맷 공유화·투영 분리·재녹화 금지·세그 열거 이관.**
+  하루를 부채 해소에 씀. 계기는 "실영상 취득 소스의 모듈화 타진" + 병립 구도 검토였고,
+  조사 과정에서 나온 것들을 순서대로 처리했다. 커밋 `c5e916d`(u8) → `d3f940c`(가드) →
+  `06b8259`(PLAY 게이트) → `72f139c`(세그 열거) → `a060bfc`(포맷 v2).
+  - **조사에서 확인한 구조**: 세 avio 드라이버는 이미 **동일 vtable**(`LBX_AVIO_DRIVER` 0.4)로
+    취급되고 분기는 `svmdemo_main.cpp:785` 의 grab 타임아웃 **한 줄**뿐. `lbx_avio_grab` 은
+    이미 `{drv, dev}` 쌍 배열을 받는 **크로스 드라이버 디스패처**이고 호스트도 그걸 쓰는데,
+    `dev_set[i].drv = &avd` 로 전 채널이 같은 드라이버 하나다 — **병립을 막는 것은
+    인터페이스가 아니라 `drivers.avio` 가 문자열 하나라는 점뿐**. 다만 그 한 줄이
+    "재생 드라이버냐"를 모드 플래그로 쓰므로 두 슬롯 상주 시 라이브 페이싱이 깨진다(선결 과제).
+  - **레이아웃 가드 보강**(`d3f940c`): 호스트에 `DVRS_VSTATE == 32` 가드가 없었고, 가드가
+    `.cpp` 에 있어 헤더를 include 하는 다른 TU 는 미검사였다. 헤더로 올림(이후 v2 에서
+    공유 헤더로 이전).
+  - **재생 메시지 재녹화 금지**(`06b8259`, 설계 미결 #8 확정): avio-play 가 `sender='PLAY'`
+    로 같은 CQ 에 재주입하므로 재생 중 녹화가 켜져 있으면 messages.bin 에 사본이 쌓였다.
+    금지 근거는 **비대칭**이다 — 표시 소스를 재생으로 바꿔도 영상 녹화는 캡처 링을 직접
+    탭하므로 계속 유지되는데, 메시지까지 흘리면 **영상은 라이브인데 messages.bin 만 재생물로
+    오염**된다. 텔레메트리는 반대 방침 유지(재생 트래픽도 송출 — 뷰어로 되짚는 것이 주 용도).
+    "기록은 영구물이라 오염을 막고, 송출은 휘발성이라 통과시킨다".
+  - **세그 체인 열거를 호스트로**(`72f139c`): 드라이버가 `list_files(root,"seg_*")` 로
+    직접 스캔하고 호스트도 채번에서 따로 스캔하는 split-brain 이었다. `PlayOpen` 이 열거해
+    `play.open{segments:[...]}` 로 넘긴다 — **호스트=무엇을 재생할지 찾기, 드라이버=그것을
+    읽고 재생하기**. 장래 세션 브라우저 UI 가 드라이버 지원 없이 이 경로를 쓴다. `list_files`
+    가 이름 바이트 오름차순 qsort 를 보장하고 채번이 최대+1 단조라 이름순=시간순이 성립.
+    구 드라이버 스큐 방지로 `dir` 을 항상 병행 전송(아는 키만 소비 규약).
+  - **포맷 v2 전환**(`a060bfc`): 포맷 정의를 lbx-intf 로 넘기고 이 저장소는 레코더만 갖는다.
+    **states.bin 에 차량 상태 스냅샷을 더 이상 기록하지 않는다** — 상세 근거는 lbx-intf 항목.
+    `DVRS_REC_RecordFrameState` 에서 `const DVRS_VSTATE *` 인자가 사라졌다.
+  - **부수 발견**: `u8` 리터럴 프리픽스 전면 스윕(`c5e916d`, 28파일 207/207 대칭) — 한국어
+    로그가 MSVC 실행 문자셋 변환으로 윈도에서 깨지는 것을 막는다. lbx-core 도 동반(`51e7a9d`).
+  - **다음**: ① `drivers.avio` 를 `live`/`play` 슬롯으로 확장(병립 배관, `main.cpp:785` 의
+    capability-probe-as-mode-flag 제거 + `cap_chan[]` 라우팅 슬롯별 분리) ② 투영(stats)
+    실제 구축 경로 — `VEH_UNIT_STAT` 기반, 알고리즘 작업공간에 `DVRS_STATS_HEADER` 컨테이너로
+    ③ AVIO 어댑터 보일러플레이트 ~250줄 3중복(avio-file/play/v4l2)을 lbx-intf 헬퍼로.
 
 - **최근 (2026-07-22): GSEN(IMU) 인제스트 완료 + IO 디바이스 모듈 경계 방침 확정 (`da7efad`/`85be1eb`).**
   tool/limu 검증 시퀀스를 svmdemo 에 연결 — `test/src/gsen/`(디바이스층+글루),
@@ -543,6 +611,40 @@
   `rrect_* -> rect_*` API 통합은 완료.
 
 ## drv/avio-play — DVRS 세션 재생 드라이버 (신규, 활발)
+
+- **(2026-07-27) 포맷 계약 공유화 + `record_size` stride 화 + 세그 열거 이관 (`518db1f`/`1d2667d`).**
+  - `play_format.h` **삭제** — 호스트 구조체의 손복제 사본이었다. 이제 lbx-intf 의
+    `intf/lbx_dvrs_format.h` 를 쓴다(승격 근거는 lbx-intf 항목).
+  - **`record_size` 를 stride 로**: 종전엔 `record_size != sizeof(레코드)` 면 거부해서,
+    크기 진화를 허용하려고 넣은 필드가 진화를 막고 있었다. 이제 stride 만큼 전진하며 앞
+    `sizeof(DVRS_STATE_RECORD)` 바이트만 채택하고 버전은 `<=` 로 받는다(stride 하한만 거부).
+    덕분에 **v1(192B)/v2(32B)를 버전 분기 없이 한 경로로** 읽는다.
+  - `chain_scan`(디렉토리 직접 스캔) → `chain_build`(호스트가 준 순서 사용).
+    `play_core_open_chain` 신설, `play.caps` 에 `version:2`+`segments:true`.
+    **이 드라이버에서 `seg_*` 패턴이 사라졌다** — 공유 상수를 늘리지 않고 없앤 셈.
+  - `DVRS_MSG_HEADER` 채택(수동 `hdr+0/+2/+6` memcpy 대체), `PLAY_MSG_BUF_CAPA` 를
+    `DVRS_MSG_MAX_PAYLOAD` 기준으로 유도.
+  - **seek 계약이 줄었다**: "호스트가 vstate 스냅샷으로 프라이밍"은 성립하지 않는다 —
+    포맷에 스냅샷이 없고 소비자가 로그를 재생해 재구축한다. 이 계층의 의무는 "그 프레임의
+    메시지 span 을 흘려보내라"뿐이고 `play_core_step` 이 이미 한다(설계 미결 #5 의 성격 변경).
+  - **실 v1 녹화물 회귀 검증**: `D:\DB\dvrs\2026-07-24_10_00\session_t0000276269`
+    (version=1/record_size=192) → records=3204, 8채널 전부 matched 3202/3204,
+    **orphan blocks=0**, 메시지 21,730건/2,295,266바이트 정상(평균 페이로드 95.6B =
+    `LBX_CAN_PACKET` 크기와 일치 — 헤더 10B 가 틀렸다면 이터레이션이 즉시 어긋난다).
+    미매칭 2프레임/채널은 기존 머리·꼬리 버스트로 종전과 동일.
+  - **미해결(위생)**: `RELEASE-NOTES.md` 가 아직 avio-file 내용 그대로, `test/cap_file.list`
+    잔재, `avio_play_ui.cpp` 는 폰트 진단 스텁(재생 UI 는 전부 호스트에 있음).
+  - **명명·백엔드 방침 논의 결론**: `avio-mpp` 를 별 저장소로 만들지 **않는다** —
+    `play_dec.h` 가 이미 백엔드 심이고(머리말에 "board: MPP decoder (future)" 명시)
+    MPP 는 순수 디코더라 여기 들어맞는다. 별 모듈로 뽑으면 세션 리더·MKV demux·클럭·세그
+    체인·메시지 재주입·출력 어댑터 **~1,700줄이 플랫폼 무관인데 삼중복**된다. 보드에 ffmpeg
+    가 끌려가는 문제는 이미 해결돼 있다(`CONFIG_AVCODEC_DECODER` x64 한정). 대신 백엔드
+    가시성을 `play.caps.decoder` 로 노출하고 `play_dec.h` 가 말하는 프로브 체인을 실제로
+    구현하는 것이 다음. **`avio-gst` 는 반대로 별 모듈이 맞다** — gstreamer 는 디코더가
+    아니라 demux+decode+convert 파이프라인 전체를 흡수해 `PLAY_DEC_VTBL` 에 안 들어가고,
+    `v4l2src` 로 라이브도 할 수 있어 역할 하나에 묶이지 않는다. `avio-net`(보드→PC 스트림)도
+    별 모듈이며, 그 녹화는 **인코딩 없이 패스스루 mux** 라 MKV muxer 공유가 선결이다
+    (현재 muxer 는 avio-v4l2 안 264줄 독립 섹션 — `FILE*` 만 의존해 추출 가능).
 
 - **(2026-07-15) 저장소 생성 + P3 1~3단계 완료 — PC 에서 8ch 세션 실시간 재생 동작.**
   avio-file 을 castproj 로 캐스팅해 독립 레포 생성(castproj 가 .git 없이 워크스페이스에

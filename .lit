@@ -87,6 +87,10 @@ path = "drv/avio-file"
 path = "drv/avio-v4l2"
 
 [[project]]
+path = "drv/avio-play"
+#skip = ["x64", "rk3568", "rk3576", "tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
+
+[[project]]
 path = "drv/plat-glfb"
 skip = ["x64", "rk3568", "rk3576"]
 
