@@ -112,6 +112,11 @@ skip = ["tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-
 path = "cal/cal-flood"
 
 [[project]]
+path = "cal/cal-smart"
+# libsmart_cal.so 프리빌트가 있는 rk3576·a53hf-arm32 만 Linux 빌드 (나머지는 프리빌트 수급 전까지 skip)
+skip = ["x64", "rk3568", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
+
+[[project]]
 path = "lbsvm-core"
 
 [[project]]
