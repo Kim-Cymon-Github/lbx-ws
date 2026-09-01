@@ -1,4 +1,4 @@
-# ============================================
+﻿# ============================================
 # Linux 빌드 환경
 # ============================================
 # 글로벌 linux 빌드 디렉토리 설정 (기본값: build/linux)
@@ -85,6 +85,11 @@ path = "drv/avio-file"
 
 [[project]]
 path = "drv/avio-v4l2"
+
+[[project]]
+path = "drv/avsink-mpp"
+# librockchip_mpp 프리빌트가 있는 rk3576 만 Linux 빌드 (인코딩·저장·스트리밍 세트, 2026-08-31 avio-v4l2 에서 분리)
+skip = ["x64", "rk3568", "tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
 
 [[project]]
 path = "drv/avio-play"
