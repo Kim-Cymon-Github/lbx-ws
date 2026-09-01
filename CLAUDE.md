@@ -106,6 +106,46 @@ L:\ 는 `lit` 멀티레포 워크스페이스의 **얇은 루트 레포**이자,
   추가할 수 있다.**
 - **커밋 메시지**: 한국어, Conventional Commits 접두사(`feat:`, `fix(build):` 등 — 각 레포 최근 이력에 맞춤).
 
+## lbx 라이브러리 사용 규율 (새 코드 짜기 전에 확인)
+
+lbx는 전부 사용자 코드다. **표준 C나 직접 구현으로 때우기 전에 lbx에 이미 있는지 먼저 본다.**
+아래는 실제로 중복 구현·오작동이 났던 자리들이다.
+
+### stdlib 대체 (직접 호출 금지)
+
+| 하려는 것 | 쓸 것 | 헤더 |
+|---|---|---|
+| `malloc`/`realloc`/`free`/`memcpy` | `alloc_memory`/`realloc_memory`/`free_memory`/`copy_memory` | `lbx_mm.h` |
+| `printf`/`fprintf(stderr,...)` | `Err_` / `Warn_` / `Info_` / `Log_` / `Dbg_` | `system/lbx_log.h` |
+| `fopen` | **`lbx_fopen(name, mode)`** (`FILE*` 반환 — 그대로 대체) | `system/lbx_file.h` |
+
+`lbx_fopen`은 경고 회피용이 아니다 — Windows에서 UTF-16 변환 후 `_wfopen_s`라 **한글 경로가 실제로 열린다**
+(raw `fopen`은 ANSI 코드페이지라 조용히 실패). 게다가 `<SDLCheck>true</SDLCheck>` 프로젝트에서는
+C4996이 오류로 승격돼 **빌드 자체가 깨진다**. `calloc`은 당분간 그대로(제로초기화 alloc은 추후 lbx에 추가).
+
+### var 읽기
+
+- 깊은 경로는 **`v.Find("vehicle.spec.length")` / `v.Find("cameras[0].k[0]")`** 가 정석이다.
+  키·인덱스 혼합, 기본값(`.f32(def)`), **트리 무오염** 전부 된다.
+- 체인 `[]`는 **`const`로 받았을 때만** 안전하다. 비const var의 `[]`는 std::map처럼 **키를 생성한다**(쓰기 경로).
+- C API는 NULL을 그대로 흘려도 된다 — `var_of_strkey`/`var_find_rawkey`/`var_prop_as_*_def`/
+  `var_to_*_def`/`var_get_value_at_index`/`var_of_index` 전부 NULL 안전.
+  **소비자 쪽에 NULL 가드 래퍼를 만들지 말 것.** `var_prop_as_f32_def`·`var_prop_as_fourcc_def`·
+  `fourcc_from_str`처럼 **이미 있는 것을 다시 만드는 일**이 반복됐다.
+
+### var 쓰기 / JSON
+
+- **JSON 읽기·쓰기를 직접 만들지 말 것** — `var_json_stream_(S)` / `var_to_json_ex(&v, &opt)`.
+  var가 문법·이스케이프·숫자 왕복을 소유한다. 사본을 만들면 곧 갈라진다.
+- 숫자 출력 기본은 **왕복 무손실 최단 표기**다(`0.1`은 `"0.1"`, f32 유효숫자는 필요한 만큼).
+  자릿수를 못박아야 하면 `VAR_JSON_WRITE_OPT{ indent, f32_fmt, f64_fmt }`를 넘긴다.
+
+### C 소스 작성
+
+- **선언은 블록 맨 앞**(C90). 문장 뒤 선언은 구형 툴체인에서 안 넘어간다.
+  가드를 넣을 땐 몸통을 `if (x) { ... }`로 **감싸지**, 기존 선언 앞에 `if (...) return;`을 끼워넣지 않는다.
+  확인: `gcc -fsyntax-only -Wdeclaration-after-statement <file>`
+
 ## 작업 방식 원칙 (lbsvm-core 지침에서 일반화)
 
 - 이름 변경보다 **의존 방향 정리와 중복 제거가 먼저**다. 이름 변경은 마지막에 모아서.
