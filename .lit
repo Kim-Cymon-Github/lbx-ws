@@ -84,6 +84,9 @@ path = "lbx-gui"
 path = "drv/avio-file"
 
 [[project]]
+path = "drv/avio-cast"   # PC 전용(보드가 자기 cast 를 받을 일이 없다) — build/linux 없음
+
+[[project]]
 path = "drv/avio-v4l2"
 
 [[project]]
