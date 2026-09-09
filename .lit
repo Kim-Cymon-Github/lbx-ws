@@ -119,10 +119,14 @@ skip = ["tcc803x-3.1.0-a53hf-arm32", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-
 [[project]]
 path = "cal/cal-flood"
 
-[[project]]
-path = "cal/cal-smart"
-# libsmart_cal.so 프리빌트가 있는 rk3576·a53hf-arm32 만 Linux 빌드 (나머지는 프리빌트 수급 전까지 skip)
-skip = ["x64", "rk3568", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
+# cal-smart 는 빌드 대상에서 제외한다(2026-09-09) — 저쪽 팀이 자체 주기로 관리·릴리스하는
+# 저장소다. 여기서 함께 빌드·배포하면 원격에 올라온 그쪽 작업과 충돌하고(실제로 메인
+# 저장소 push 가 거부됐다), 릴리스 sweep 에 끼면 남의 저장소에 태그가 걸린다.
+# 프리빌트(lib/lbx 의 libsmart_cal.so)는 그쪽이 배포한 것을 받아 쓴다.
+#[[project]]
+#path = "cal/cal-smart"
+## libsmart_cal.so 프리빌트가 있는 rk3576·a53hf-arm32 만 Linux 빌드 (나머지는 프리빌트 수급 전까지 skip)
+#skip = ["x64", "rk3568", "tcc803x-3.2.0-a7hf-arm32", "tcc803x-yp4.0-a53-aarch64", "tcc807x-1.0.0-a55-subcore", "tcc807x-evm"]
 
 [[project]]
 path = "lbsvm-core"
