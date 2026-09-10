@@ -25,6 +25,7 @@
   RAII + `ErrMsg()` 로, 결과 안 쓰는 호출은 `var_check` 로. lbx-intf Open/Close 의
   성공값 `VAR_OK`. **ltxm 은 lib/lbx v2.2.1 고정이라 손대지 않음**(갱신 시 구
   `var_check(lvalue)` 문장 매크로 사용처 1곳 수정 필요).
+- **릴리스(09-10)**: lbx-core v2.7.0(minor) + 나머지 19개 patch(lbx-intf 0.6.1 … eyel2sdk 0.4.1), 번들 태그 lib/lbx v2.7.0·lib/lbsvm v0.7.1. ltxm 도 v1.0.1 로 갱신(CreateContext 이중 해제·종료 순서 결함 수정).
 - **보류**: msgpack 은 ERR 를 여전히 nil 강등(IPC 경계 직렬화는 다음 단계),
   JSON 되읽기. `if (r)` 함정(operator bool = 값 변환)은 규율로 감수.
 
