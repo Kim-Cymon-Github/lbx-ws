@@ -4,6 +4,30 @@
 문서다. 시점 스냅샷이므로 작업이 끝나거나 방향이 바뀔 때 갱신한다. 상세 설계는 각
 모듈의 `doc/` 를 본다. 정적 구조는 [architecture.md](architecture.md).
 
+## lbx-core — var_t 오류 처리(Result 프로토콜) 재설계 (2026-09-10)
+
+값 기반 인터페이스 전환(var_t move)을 오류 처리가 따라가지 못해 호스트마다
+`if (VAR_IS_ERR(Open(...)))` 로 검사만 하고 버리는 패턴(힙 누수 + 원인 유실)이 6곳,
+이중 로그·일반 문구 덮어쓰기가 반복됐다. clink 소스 첫 리뷰를 계기로 재설계.
+
+- **결정**: 별도 Result 클래스는 만들지 않는다 — var_t 가 이미 tagged union 이라 ERR
+  태그가 Rust `Err` 에 해당. 부족한 건 접근자·전파 sugar 뿐. ERR payload 는 OBJ 멤버
+  리스트로(`{code, msg, trace:[{code,msg,at}]}`) — 저장·수명은 OBJ 경로 재사용, 태그는
+  "오류는 문서가 아니다" 판정만. 성공 단위값 `VAR_OK` = null. 로그 규칙 = 생산자는
+  이유를 담고 소비자가 결정 지점에서 한 번 찍는다(발생 위치는 `at` 필드).
+- **lbx-core 2.7.0**: `var_err_(code[,fmt,...])`(위치 기록), `var_err_wrap[_code]`
+  (in-place 스택), `var_err_code/root_code/msg/at`(빌림), `VAR_TRY`, `var_check`,
+  `lbx::var::IsErr/ErrCode/ErrMsg/Wrap/Err`. JSON 은 `{"$err":{...}}`. 옛 VAR_ERR_INFO
+  블롭·지연 콜백 제거. 테스트 `test_var_err_protocol` 25항목 양 플랫폼 green.
+  가이드 `lbx-core/doc/users guide/ko/var_error_handling.md`.
+- **소비처 정리**: clink(main/cast), lbsvm-core svmdemo, cal-flood cal-host,
+  lbx-gui 테스트 2종, plat-win/glwin 테스트, eyel2sdk 예제 — 누수 패턴을 `lbx::var`
+  RAII + `ErrMsg()` 로, 결과 안 쓰는 호출은 `var_check` 로. lbx-intf Open/Close 의
+  성공값 `VAR_OK`. **ltxm 은 lib/lbx v2.2.1 고정이라 손대지 않음**(갱신 시 구
+  `var_check(lvalue)` 문장 매크로 사용처 1곳 수정 필요).
+- **보류**: msgpack 은 ERR 를 여전히 nil 강등(IPC 경계 직렬화는 다음 단계),
+  JSON 되읽기. `if (r)` 함정(operator bool = 값 변환)은 규율로 감수.
+
 ## lbx-gfx — graphics thin layer (활발)
 
 - **완료**: device/swapchain(GLES+VK), mesh + `gfx_draw_mesh`(unlit/blit),
